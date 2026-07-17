@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+/* Tokens de Comando PM (paleta validada del sistema de dataviz).
+   Semáforos = paleta de estatus, siempre acompañados de icono+texto. */
+:root {
+  color-scheme: light;
+  --superficie: #fcfcfb;
+  --plano: #f9f9f7;
+  --tinta: #0b0b0b;
+  --tinta-2: #52514e;
+  --tinta-suave: #898781;
+  --grid: #e1e0d9;
+  --eje: #c3c2b7;
+  --borde: rgba(11, 11, 11, 0.1);
+  --acento: #2a78d6;
+  --ok: #0ca30c;
+  --alerta: #fab219;
+  --critico: #d03b3b;
+}
+
+body {
+  background: var(--plano);
+  color: var(--tinta);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.tarjeta {
+  background: var(--superficie);
+  border: 1px solid var(--borde);
+  border-radius: 12px;
+}

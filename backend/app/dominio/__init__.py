@@ -1,0 +1,31 @@
+"""Dominio de Comando PM: lógica de negocio pura, sin red ni DB.
+
+Cada regla del CLAUDE.md §3 vive aquí y tiene su test en pruebas/.
+"""
+from .reglas import (
+    avance,
+    cuadrante_eisenhower,
+    es_urgente,
+    hitos_vencidos,
+    proximo_hito,
+    salud_proyecto,
+    spi,
+    tareas_vencidas,
+)
+from .ivy_lee import MAX_TAREAS_DIA, sugerir_plan_dia, validar_plan
+from .gantt import ruta_critica
+
+__all__ = [
+    "avance",
+    "cuadrante_eisenhower",
+    "es_urgente",
+    "hitos_vencidos",
+    "proximo_hito",
+    "salud_proyecto",
+    "spi",
+    "tareas_vencidas",
+    "MAX_TAREAS_DIA",
+    "sugerir_plan_dia",
+    "validar_plan",
+    "ruta_critica",
+]
