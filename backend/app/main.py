@@ -167,6 +167,21 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
 
     # ----- Tareas -----
 
+    @app.get("/api/tareas")
+    def listar_tareas(proyecto_id: Optional[str] = None):
+        """Tareas expandidas (con cuadrante y proyecto) para Eisenhower y plan semanal.
+
+        Sin filtro: todas las de proyectos activos. Con proyecto_id: solo las suyas.
+        """
+        hoy = date.today()
+        if proyecto_id:
+            _obtener(repo.proyectos, proyecto_id, "Proyecto")
+            tareas = repo.tareas_de(proyecto_id)
+        else:
+            tareas = repo.tareas_de_activos()
+        tareas = sorted(tareas, key=lambda t: (t.fecha_fin, t.fecha_inicio))
+        return {"tareas": [_tarea_expandida(t, hoy) for t in tareas]}
+
     @app.post("/api/proyectos/{pid}/tareas")
     def crear_tarea(pid: str, datos: dict):
         _obtener(repo.proyectos, pid, "Proyecto")

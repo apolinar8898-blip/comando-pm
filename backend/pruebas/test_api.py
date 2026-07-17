@@ -58,6 +58,30 @@ def test_flujo_completo(tmp_path):
     assert len(detalle["snapshots"]) == 1
 
 
+def test_tareas_expandidas_y_cambio_de_cuadrante(tmp_path):
+    api = cliente(tmp_path)
+    api.post("/api/demo/sembrar")
+
+    # Listado global: solo proyectos activos, con cuadrante y datos del proyecto
+    todas = api.get("/api/tareas").json()["tareas"]
+    assert len(todas) == 11
+    assert all({"cuadrante", "proyecto_nombre", "proyecto_color"} <= set(t) for t in todas)
+
+    # Filtro por proyecto
+    pid = todas[0]["proyecto_id"]
+    del_proyecto = api.get(f"/api/tareas?proyecto_id={pid}").json()["tareas"]
+    assert all(t["proyecto_id"] == pid for t in del_proyecto)
+    assert api.get("/api/tareas?proyecto_id=no-existe").status_code == 404
+
+    # Mover de cuadrante = fijar flags manuales (drag & drop de la matriz)
+    lejana = next(t for t in todas if t["cuadrante"] in (2, 4))
+    r = api.patch(
+        f"/api/tareas/{lejana['id']}",
+        json={"importante": False, "urgente_manual": True},
+    ).json()
+    assert r["cuadrante"] == 3  # urgente manual, no importante
+
+
 def test_persistencia_en_archivo(tmp_path):
     ruta = tmp_path / "datos.json"
     api = cliente(tmp_path)

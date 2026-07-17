@@ -46,13 +46,18 @@ cd backend
 - **Seguridad mínima**: si defines `APP_PASSWORD` en el backend, la API exige el
   header `X-Token`; guarda el valor en localStorage como `comando_pm_token`.
 
-## Estado (Fase 1 + inicio de Fase 2)
+## Estado (Fases 1 y 2 completas)
 
 - ✅ Dominio puro con tests: salud calculada, avance ponderado, SPI (EVM
   simplificado), Eisenhower, sugerencia Ivy Lee (máx. 6), ruta crítica.
-- ✅ API completa: portafolio, proyectos, tareas, retos, plan de hoy, cierre de
-  día, snapshots diarios de KPIs, demo.
-- ✅ Vistas: **Hoy** (Ivy Lee + semáforos + retos que arden), **Portafolio**
-  (tarjetas KPI + roadmap), **Proyecto** (dashboard + Gantt + tareas).
-- ⏳ Siguiente (CLAUDE.md §8): matriz Eisenhower drag & drop, plan semanal,
-  documentos estratégicos (charter, canvas, SMART, Porter) y RCA con 5 porqués.
+- ✅ API completa: portafolio, proyectos, tareas (listado expandido con
+  cuadrante), retos, plan de hoy, cierre de día, snapshots diarios, demo.
+- ✅ Vistas: **Hoy** (Ivy Lee + semáforos + retos que arden), **Semana**
+  (tablero lun-dom con reprogramación y carril de vencidas), **Eisenhower**
+  (matriz 2×2 global y por proyecto), **Portafolio** (tarjetas KPI + roadmap),
+  **Proyecto** (dashboard + Gantt + semana + eisenhower + tareas).
+- ✅ Drag & drop con fallback de click/touch: mover de cuadrante y reprogramar
+  días funciona también sin mouse (móvil).
+- ⏳ Siguiente (CLAUDE.md §8, Fases 3-4): documentos estratégicos (charter con
+  siembra de hitos, canvas, SMART con validación dura, Porter, roadmap con
+  fases) y RCA con 5 porqués + acciones que crean tareas.
