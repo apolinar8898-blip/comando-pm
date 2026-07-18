@@ -8,7 +8,7 @@ from datetime import date, datetime
 from typing import Literal, Optional
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 EstadoProyecto = Literal["activo", "pausado", "cerrado", "cancelado"]
 EstadoTarea = Literal["pendiente", "en_curso", "hecha", "bloqueada"]
@@ -39,15 +39,25 @@ class Proyecto(BaseModel):
 
 
 class Objetivo(BaseModel):
+    """Objetivo SMART. Validación dura (CLAUDE.md §5.3): los 5 componentes
+    son obligatorios y "medible" exige métrica con valor objetivo positivo."""
+
     id: str = Field(default_factory=_nuevo_id)
     proyecto_id: str
     especifico: str
     metrica: str
-    valor_objetivo: float
+    valor_objetivo: float = Field(gt=0)
     valor_actual: float = 0
     alcanzable: str
     relevante: str
     fecha_limite: date
+
+    @field_validator("especifico", "metrica", "alcanzable", "relevante")
+    @classmethod
+    def _no_vacio(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("es obligatorio: un objetivo SMART no admite campos vacíos")
+        return v.strip()
 
 
 class Tarea(BaseModel):
@@ -84,6 +94,7 @@ class Documento(BaseModel):
     tipo: TipoDocumento
     version: int = 1
     contenido: dict = Field(default_factory=dict)
+    historial: list[dict] = Field(default_factory=list)  # [{version, contenido, fecha}]
     creado_en: datetime = Field(default_factory=datetime.now)
 
 

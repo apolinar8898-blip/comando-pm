@@ -191,6 +191,21 @@ Mapa mental que guía el diseño — no crear módulos por área de conocimiento
 
 ---
 
-## 11. Estado actual
+## 11. Estado actual (julio 2026)
 
-Proyecto nuevo. Nada construido. Empezar por Fase 1, paso 1: `schema.sql`.
+**Fases 1, 2 y 3 construidas y verificadas end-to-end:**
+
+- Fase 1: dominio puro con tests (salud calculada, avance ponderado, SPI,
+  Eisenhower, Ivy Lee, ruta crítica), API FastAPI, repositorio con
+  persistencia a archivo (migración a Supabase = solo esa capa), vistas
+  Hoy / Portafolio / Proyecto (dashboard + Gantt SVG propio).
+- Fase 2: matriz Eisenhower 2×2 y plan semanal, con drag & drop y fallback
+  de click/touch, a nivel portafolio y como pestañas del proyecto.
+- Fase 3: documentos JSONB versionados con historial (charter, canvas,
+  Porter con radar SVG), charter que siembra hitos reales en el Gantt,
+  objetivos SMART con validación dura, fase del proyecto en el roadmap,
+  vista de lectura imprimible.
+
+**Falta (Fase 4):** módulo de retos con matriz impacto×probabilidad
+editable, RCA con 5 porqués ramificables cuyas acciones crean tareas, y
+flujo de cierre de proyecto con lecciones aprendidas.

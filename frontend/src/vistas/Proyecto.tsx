@@ -4,12 +4,13 @@ import { api } from "../api";
 import type { DetalleProyecto, EstadoTarea } from "../tipos";
 import Semaforo from "../componentes/Semaforo";
 import { fechaCorta } from "../componentes/Chips";
+import Documentos from "../componentes/Documentos";
 import Gantt from "../componentes/Gantt";
 import GraficaAvance from "../componentes/GraficaAvance";
 import Eisenhower from "./Eisenhower";
 import Semana from "./Semana";
 
-type Pestana = "dashboard" | "gantt" | "semana" | "eisenhower" | "tareas";
+type Pestana = "dashboard" | "gantt" | "semana" | "eisenhower" | "tareas" | "docs";
 
 export default function Proyecto() {
   const { id } = useParams<{ id: string }>();
@@ -47,7 +48,7 @@ export default function Proyecto() {
           {proyecto.descripcion && <p className="text-sm text-[var(--tinta-2)]">{proyecto.descripcion}</p>}
         </div>
         <nav className="flex gap-1 rounded-lg border border-[var(--borde)] bg-[var(--superficie)] p-1">
-          {(["dashboard", "gantt", "semana", "eisenhower", "tareas"] as Pestana[]).map((p) => (
+          {(["dashboard", "gantt", "semana", "eisenhower", "tareas", "docs"] as Pestana[]).map((p) => (
             <button
               key={p}
               onClick={() => setPestana(p)}
@@ -125,6 +126,8 @@ export default function Proyecto() {
       {pestana === "eisenhower" && <Eisenhower proyectoId={proyecto.id} />}
 
       {pestana === "tareas" && <TablaTareas detalle={detalle} recargar={cargar} />}
+
+      {pestana === "docs" && <Documentos detalle={detalle} recargar={cargar} />}
     </div>
   );
 }

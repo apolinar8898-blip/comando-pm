@@ -63,7 +63,21 @@ export interface Objetivo {
   metrica: string;
   valor_objetivo: number;
   valor_actual: number;
+  alcanzable: string;
+  relevante: string;
   fecha_limite: string;
+}
+
+export type TipoDocumento = "charter" | "canvas" | "porter" | "roadmap" | "rca";
+
+export interface Documento {
+  id: string;
+  proyecto_id: string | null;
+  tipo: TipoDocumento;
+  version: number;
+  contenido: Record<string, any>;
+  historial: { version: number; contenido: Record<string, any>; fecha: string }[];
+  creado_en: string;
 }
 
 export interface Snapshot {

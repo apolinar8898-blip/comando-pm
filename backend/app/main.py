@@ -25,7 +25,7 @@ from .dominio import (
     tareas_vencidas,
     validar_plan,
 )
-from .modelos import KpiSnapshot, PlanDia, Proyecto, Reto, Tarea
+from .modelos import Documento, KpiSnapshot, Objetivo, PlanDia, Proyecto, Reto, Tarea
 from .repositorio import Repositorio
 
 
@@ -289,6 +289,120 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
         pendientes = [tid for tid in plan.tarea_ids
                       if tid in repo.tareas and repo.tareas[tid].estado != "hecha"]
         return {"ok": True, "pendientes": len(pendientes)}
+
+    # ----- Objetivos SMART -----
+
+    def _validar(modelo_cls, datos: dict) -> Any:
+        """Valida contra el modelo y traduce el error a un 422 legible."""
+        try:
+            return modelo_cls.model_validate(datos)
+        except Exception as e:  # ValidationError
+            errores = getattr(e, "errors", lambda: [{"msg": str(e)}])()
+            detalle = "; ".join(
+                f"{'.'.join(str(p) for p in err.get('loc', []))}: {err.get('msg', '')}"
+                for err in errores
+            )
+            raise HTTPException(status_code=422, detail=detalle)
+
+    @app.post("/api/proyectos/{pid}/objetivos")
+    def crear_objetivo(pid: str, datos: dict):
+        _obtener(repo.proyectos, pid, "Proyecto")
+        objetivo = _validar(Objetivo, {**datos, "proyecto_id": pid})
+        repo.objetivos[objetivo.id] = objetivo
+        repo.guardar()
+        return objetivo.model_dump(mode="json")
+
+    @app.patch("/api/objetivos/{oid}")
+    def editar_objetivo(oid: str, cambios: dict):
+        objetivo = _obtener(repo.objetivos, oid, "Objetivo")
+        repo.objetivos[oid] = _validar(Objetivo, {**objetivo.model_dump(), **cambios})
+        repo.guardar()
+        return repo.objetivos[oid].model_dump(mode="json")
+
+    @app.delete("/api/objetivos/{oid}")
+    def borrar_objetivo(oid: str):
+        _obtener(repo.objetivos, oid, "Objetivo")
+        del repo.objetivos[oid]
+        repo.guardar()
+        return {"ok": True}
+
+    # ----- Documentos estratégicos (JSONB versionado, CLAUDE.md §5) -----
+
+    @app.get("/api/documentos")
+    def listar_documentos(proyecto_id: Optional[str] = None):
+        docs = list(repo.documentos.values())
+        if proyecto_id:
+            _obtener(repo.proyectos, proyecto_id, "Proyecto")
+            docs = [d for d in docs if d.proyecto_id == proyecto_id]
+        docs.sort(key=lambda d: d.creado_en)
+        return {"documentos": [d.model_dump(mode="json") for d in docs]}
+
+    @app.post("/api/documentos")
+    def crear_documento(datos: dict):
+        if datos.get("proyecto_id"):
+            _obtener(repo.proyectos, datos["proyecto_id"], "Proyecto")
+        doc = _validar(Documento, datos)
+        repo.documentos[doc.id] = doc
+        repo.guardar()
+        return doc.model_dump(mode="json")
+
+    @app.put("/api/documentos/{did}")
+    def versionar_documento(did: str, datos: dict):
+        """Guardar = nueva versión; la anterior queda en el historial."""
+        doc = _obtener(repo.documentos, did, "Documento")
+        doc.historial.append({
+            "version": doc.version,
+            "contenido": doc.contenido,
+            "fecha": date.today().isoformat(),
+        })
+        doc.contenido = datos.get("contenido", {})
+        doc.version += 1
+        repo.guardar()
+        return doc.model_dump(mode="json")
+
+    @app.delete("/api/documentos/{did}")
+    def borrar_documento(did: str):
+        _obtener(repo.documentos, did, "Documento")
+        del repo.documentos[did]
+        repo.guardar()
+        return {"ok": True}
+
+    @app.post("/api/documentos/{did}/sembrar")
+    def sembrar_charter(did: str):
+        """El charter no es papel muerto: sus hitos de alto nivel se convierten
+        en tareas-hito reales del proyecto (idempotente por título)."""
+        doc = _obtener(repo.documentos, did, "Documento")
+        if doc.tipo != "charter" or not doc.proyecto_id:
+            raise HTTPException(status_code=400, detail="Solo un charter de proyecto puede sembrar el plan")
+        hitos = [
+            h for h in doc.contenido.get("hitos_alto_nivel", [])
+            if h.get("titulo", "").strip() and h.get("fecha")
+        ]
+        if not hitos:
+            raise HTTPException(status_code=400, detail="El charter no tiene hitos con título y fecha")
+        existentes = {
+            t.titulo.strip().lower()
+            for t in repo.tareas_de(doc.proyecto_id) if t.es_hito
+        }
+        creados = 0
+        for h in hitos:
+            if h["titulo"].strip().lower() in existentes:
+                continue
+            tarea = _validar(Tarea, {
+                "proyecto_id": doc.proyecto_id,
+                "titulo": h["titulo"].strip(),
+                "fecha_inicio": h["fecha"],
+                "fecha_fin": h["fecha"],
+                "es_hito": True,
+                "importante": True,
+                "esfuerzo_estimado_h": 0,
+            })
+            repo.tareas[tarea.id] = tarea
+            creados += 1
+        doc.contenido["sembrado"] = True
+        doc.contenido["confirmado"] = True
+        repo.guardar()
+        return {"ok": True, "hitos_creados": creados, "hitos_existentes": len(hitos) - creados}
 
     # ----- Demo -----
 

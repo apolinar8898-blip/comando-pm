@@ -182,6 +182,7 @@ function Roadmap({ proyectos }: { proyectos: Proyecto[] }) {
                 }}
               >
                 {p.nombre}
+                {p.fase && <span className="ml-1.5 font-normal opacity-75">· {p.fase}</span>}
               </Link>
             </div>
           ))}

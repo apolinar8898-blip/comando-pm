@@ -29,3 +29,23 @@ body {
   border: 1px solid var(--borde);
   border-radius: 12px;
 }
+
+/* Vista de lectura imprimible (CLAUDE.md §5): al imprimir, solo el documento. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .area-imprimible,
+  .area-imprimible * {
+    visibility: visible;
+  }
+  .area-imprimible {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    border: none;
+  }
+  .no-imprimir {
+    display: none !important;
+  }
+}

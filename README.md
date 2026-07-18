@@ -46,7 +46,7 @@ cd backend
 - **Seguridad mínima**: si defines `APP_PASSWORD` en el backend, la API exige el
   header `X-Token`; guarda el valor en localStorage como `comando_pm_token`.
 
-## Estado (Fases 1 y 2 completas)
+## Estado (Fases 1, 2 y 3 completas)
 
 - ✅ Dominio puro con tests: salud calculada, avance ponderado, SPI (EVM
   simplificado), Eisenhower, sugerencia Ivy Lee (máx. 6), ruta crítica.
@@ -58,6 +58,10 @@ cd backend
   **Proyecto** (dashboard + Gantt + semana + eisenhower + tareas).
 - ✅ Drag & drop con fallback de click/touch: mover de cuadrante y reprogramar
   días funciona también sin mouse (móvil).
-- ⏳ Siguiente (CLAUDE.md §8, Fases 3-4): documentos estratégicos (charter con
-  siembra de hitos, canvas, SMART con validación dura, Porter, roadmap con
-  fases) y RCA con 5 porqués + acciones que crean tareas.
+- ✅ Documentos estratégicos versionados (historial JSONB): charter con
+  **siembra de hitos reales en el Gantt**, canvas, Porter con radar SVG,
+  objetivos SMART con validación dura, fase del proyecto en el roadmap y
+  vista de lectura imprimible.
+- ⏳ Siguiente (CLAUDE.md §8, Fase 4): matriz de retos impacto×probabilidad,
+  RCA con 5 porqués ramificables + acciones que crean tareas, cierre de
+  proyecto con lecciones aprendidas.

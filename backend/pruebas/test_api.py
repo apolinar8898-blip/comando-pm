@@ -82,6 +82,88 @@ def test_tareas_expandidas_y_cambio_de_cuadrante(tmp_path):
     assert r["cuadrante"] == 3  # urgente manual, no importante
 
 
+def test_documentos_versionado_y_siembra_del_charter(tmp_path):
+    api = cliente(tmp_path)
+    api.post("/api/demo/sembrar")
+    pid = api.get("/api/portafolio").json()["proyectos"][0]["id"]
+
+    # Crear charter con hitos de alto nivel
+    charter = api.post("/api/documentos", json={
+        "proyecto_id": pid,
+        "tipo": "charter",
+        "contenido": {
+            "justificacion": "Validar el canal de anuncios",
+            "hitos_alto_nivel": [
+                {"titulo": "HITO: campaña al aire", "fecha": "2026-08-01"},  # ya existe
+                {"titulo": "HITO: primer cliente pagado", "fecha": "2026-08-15"},
+            ],
+        },
+    }).json()
+    assert charter["version"] == 1
+
+    # Guardar de nuevo = versión 2 con historial
+    v2 = api.put(f"/api/documentos/{charter['id']}", json={
+        "contenido": {**charter["contenido"], "justificacion": "Editada"},
+    }).json()
+    assert v2["version"] == 2
+    assert v2["historial"][0]["version"] == 1
+    assert v2["historial"][0]["contenido"]["justificacion"] == "Validar el canal de anuncios"
+
+    # Sembrar: crea solo los hitos que no existen (idempotente por título)
+    antes = len(api.get(f"/api/tareas?proyecto_id={pid}").json()["tareas"])
+    r = api.post(f"/api/documentos/{charter['id']}/sembrar").json()
+    assert r["hitos_creados"] == 1 and r["hitos_existentes"] == 1
+    despues = api.get(f"/api/tareas?proyecto_id={pid}").json()["tareas"]
+    assert len(despues) == antes + 1
+    nuevo = next(t for t in despues if t["titulo"] == "HITO: primer cliente pagado")
+    assert nuevo["es_hito"] and nuevo["esfuerzo_estimado_h"] == 0
+    # Sembrar otra vez no duplica
+    assert api.post(f"/api/documentos/{charter['id']}/sembrar").json()["hitos_creados"] == 0
+
+    # Solo charters de proyecto siembran
+    canvas = api.post("/api/documentos", json={"proyecto_id": pid, "tipo": "canvas"}).json()
+    assert api.post(f"/api/documentos/{canvas['id']}/sembrar").status_code == 400
+
+    # Filtro por proyecto
+    docs = api.get(f"/api/documentos?proyecto_id={pid}").json()["documentos"]
+    assert {d["tipo"] for d in docs} == {"charter", "canvas"}
+
+
+def test_objetivos_smart_validacion_dura(tmp_path):
+    api = cliente(tmp_path)
+    api.post("/api/demo/sembrar")
+    pid = api.get("/api/portafolio").json()["proyectos"][0]["id"]
+
+    # Sin métrica no se guarda (CLAUDE.md §5.3)
+    invalido = api.post(f"/api/proyectos/{pid}/objetivos", json={
+        "especifico": "Vender más", "metrica": "  ", "valor_objetivo": 10,
+        "alcanzable": "sí", "relevante": "sí", "fecha_limite": "2026-09-01",
+    })
+    assert invalido.status_code == 422
+    assert "metrica" in invalido.json()["detail"]
+
+    # Valor objetivo debe ser positivo
+    assert api.post(f"/api/proyectos/{pid}/objetivos", json={
+        "especifico": "x", "metrica": "ventas", "valor_objetivo": 0,
+        "alcanzable": "sí", "relevante": "sí", "fecha_limite": "2026-09-01",
+    }).status_code == 422
+
+    # Válido: se crea y el progreso se actualiza con PATCH
+    ok = api.post(f"/api/proyectos/{pid}/objetivos", json={
+        "especifico": "Cerrar 20 ventas del nuevo canal",
+        "metrica": "ventas cerradas", "valor_objetivo": 20,
+        "alcanzable": "el embudo ya convierte", "relevante": "ingreso directo",
+        "fecha_limite": "2026-09-01",
+    }).json()
+    actualizado = api.patch(f"/api/objetivos/{ok['id']}", json={"valor_actual": 5}).json()
+    assert actualizado["valor_actual"] == 5
+    detalle = api.get(f"/api/proyectos/{pid}").json()
+    assert any(o["id"] == ok["id"] for o in detalle["objetivos"])
+
+    # Borrar
+    assert api.delete(f"/api/objetivos/{ok['id']}").json()["ok"]
+
+
 def test_persistencia_en_archivo(tmp_path):
     ruta = tmp_path / "datos.json"
     api = cliente(tmp_path)
