@@ -164,6 +164,105 @@ def test_objetivos_smart_validacion_dura(tmp_path):
     assert api.delete(f"/api/objetivos/{ok['id']}").json()["ok"]
 
 
+def test_rca_siembra_acciones_como_tareas(tmp_path):
+    api = cliente(tmp_path)
+    api.post("/api/demo/sembrar")
+    pid = api.get("/api/portafolio").json()["proyectos"][0]["id"]
+
+    rca = api.post("/api/documentos", json={
+        "proyecto_id": pid,
+        "tipo": "rca",
+        "contenido": {
+            "que_paso": "La campaña se pausó 2 días por saldo insuficiente",
+            "causa_raiz": "No hay alerta de saldo bajo en la cuenta publicitaria",
+            "acciones": [
+                {"titulo": "Configurar alerta de saldo en Meta", "fecha": "2026-07-25"},
+                {"titulo": "Domiciliar la recarga mensual", "fecha": "2026-07-30"},
+                {"titulo": "  ", "fecha": "2026-08-01"},  # sin título → se ignora
+            ],
+            "verificacion": {"senal": "30 días sin pausas por saldo", "fecha": "2026-08-20"},
+        },
+    }).json()
+
+    # Siembra: 2 acciones + 1 verificación = 3 tareas con origen_rca
+    r = api.post(f"/api/documentos/{rca['id']}/sembrar-acciones").json()
+    assert r["tareas_creadas"] == 3
+    tareas = api.get(f"/api/tareas?proyecto_id={pid}").json()["tareas"]
+    del_rca = [t for t in tareas if t.get("origen_rca") == rca["id"]]
+    assert len(del_rca) == 3
+    assert all(t["importante"] for t in del_rca)
+    assert any(t["titulo"].startswith("Verificar:") for t in del_rca)
+
+    # Idempotente: repetir no duplica
+    r2 = api.post(f"/api/documentos/{rca['id']}/sembrar-acciones").json()
+    assert r2["tareas_creadas"] == 0 and r2["ya_existian"] == 3
+
+    # Un RCA sin acciones ni verificación no siembra nada
+    vacio = api.post("/api/documentos", json={"proyecto_id": pid, "tipo": "rca"}).json()
+    assert api.post(f"/api/documentos/{vacio['id']}/sembrar-acciones").status_code == 400
+    # Y un documento que no es RCA tampoco
+    canvas = api.post("/api/documentos", json={"proyecto_id": pid, "tipo": "canvas"}).json()
+    assert api.post(f"/api/documentos/{canvas['id']}/sembrar-acciones").status_code == 400
+
+
+def test_cierre_de_proyecto_con_lecciones(tmp_path):
+    api = cliente(tmp_path)
+    api.post("/api/demo/sembrar")
+    pid = api.get("/api/portafolio").json()["proyectos"][0]["id"]
+
+    cerrado = api.patch(f"/api/proyectos/{pid}", json={
+        "estado": "cerrado",
+        "lecciones": "Arrancar los creativos una semana antes; el retraso vino de ahí.",
+    }).json()
+    assert cerrado["estado"] == "cerrado"
+
+    # Archivado, no borrado: sigue consultable y fuera de los activos
+    assert api.get(f"/api/proyectos/{pid}").status_code == 200
+    todas = api.get("/api/tareas").json()["tareas"]  # solo proyectos activos
+    assert all(t["proyecto_id"] != pid for t in todas)
+
+
+def test_rca_siembra_acciones_como_tareas(tmp_path):
+    api = cliente(tmp_path)
+    api.post("/api/demo/sembrar")
+    pid = api.get("/api/portafolio").json()["proyectos"][0]["id"]
+
+    rca = api.post("/api/documentos", json={
+        "proyecto_id": pid,
+        "tipo": "rca",
+        "contenido": {
+            "que_paso": "La campaña estuvo pausada 3 días sin que nadie lo notara",
+            "porques": [{"texto": "Nadie revisó el panel de Meta", "hijos": [
+                {"texto": "No hay responsable de monitoreo diario", "hijos": []},
+            ]}],
+            "causa_raiz": "No hay responsable de monitoreo diario",
+            "acciones": [
+                {"titulo": "Configurar alerta de campaña pausada", "fecha": "2026-07-25"},
+                {"titulo": "Checklist diario de revisión de campañas", "fecha": "2026-07-22"},
+                {"titulo": "Sin fecha, no se siembra"},
+            ],
+            "verificacion": {"senal": "30 días sin pausas no detectadas", "fecha": "2026-08-20"},
+        },
+    }).json()
+
+    # Sembrar: 2 acciones con fecha + 1 verificación = 3 tareas con origen_rca
+    r = api.post(f"/api/documentos/{rca['id']}/sembrar-acciones").json()
+    assert r["tareas_creadas"] == 3
+    tareas = api.get(f"/api/tareas?proyecto_id={pid}").json()["tareas"]
+    del_rca = [t for t in tareas if t.get("origen_rca") == rca["id"]]
+    assert len(del_rca) == 3
+    assert any(t["titulo"].startswith("Verificar:") for t in del_rca)
+    assert all(t["importante"] for t in del_rca)
+
+    # Idempotente: repetir no duplica
+    r2 = api.post(f"/api/documentos/{rca['id']}/sembrar-acciones").json()
+    assert r2["tareas_creadas"] == 0 and r2["ya_existian"] == 3
+
+    # Un RCA sin acciones ni verificación no puede sembrar
+    vacio = api.post("/api/documentos", json={"proyecto_id": pid, "tipo": "rca"}).json()
+    assert api.post(f"/api/documentos/{vacio['id']}/sembrar-acciones").status_code == 400
+
+
 def test_persistencia_en_archivo(tmp_path):
     ruta = tmp_path / "datos.json"
     api = cliente(tmp_path)

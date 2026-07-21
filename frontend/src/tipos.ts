@@ -23,6 +23,9 @@ export interface Proyecto {
   color: string;
   prioridad: number;
   fase: string;
+  fase_inicio?: string | null;
+  fase_fin?: string | null;
+  lecciones?: string;
   kpis?: Kpis;
 }
 
@@ -39,6 +42,7 @@ export interface Tarea {
   urgente_manual: boolean | null;
   dependencias: string[];
   esfuerzo_estimado_h: number;
+  origen_rca?: string | null;
   cuadrante: 1 | 2 | 3 | 4;
   proyecto_nombre: string;
   proyecto_color: string;

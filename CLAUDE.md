@@ -206,6 +206,12 @@ Mapa mental que guía el diseño — no crear módulos por área de conocimiento
   objetivos SMART con validación dura, fase del proyecto en el roadmap,
   vista de lectura imprimible.
 
-**Falta (Fase 4):** módulo de retos con matriz impacto×probabilidad
-editable, RCA con 5 porqués ramificables cuyas acciones crean tareas, y
-flujo de cierre de proyecto con lecciones aprendidas.
+- Fase 4: pestaña Retos con mapa de calor impacto×probabilidad 5×5 y
+  "hacer RCA" desde retos materializados; RCA con 5 porqués ramificables,
+  causa raíz, y acciones + verificación futura que se convierten en tareas
+  reales (origen_rca) con estado visible; cierre de proyecto con lecciones
+  aprendidas y archivado.
+
+**Las 4 fases del §8 están completas.** Siguientes pasos naturales (no
+comprometidos): export JSON de respaldo, migración del repositorio a
+Supabase, despliegue (Vercel + Railway) y protección con APP_PASSWORD.

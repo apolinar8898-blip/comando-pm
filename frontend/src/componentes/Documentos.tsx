@@ -42,9 +42,11 @@ const NOMBRE_TIPO: Record<string, string> = {
   charter: "Acta de constitución (Charter)",
   canvas: "Canvas de proyecto",
   porter: "5 fuerzas de Porter",
+  rca: "Análisis causa raíz (RCA)",
 };
 
 type Hito = { titulo: string; fecha: string };
+type NodoPorque = { texto: string; hijos: NodoPorque[] };
 type Seleccion = { id?: string; tipo: TipoDocumento; contenido: Record<string, any>; version: number };
 
 export default function Documentos({ detalle, recargar }: { detalle: DetalleProyecto; recargar: () => Promise<void> }) {
@@ -68,7 +70,11 @@ export default function Documentos({ detalle, recargar }: { detalle: DetalleProy
     setError("");
     setAviso("");
     setLectura(false);
-    setSel({ tipo, contenido: tipo === "porter" ? { fuerzas: {} } : {}, version: 0 });
+    const contenido =
+      tipo === "porter" ? { fuerzas: {} }
+      : tipo === "rca" ? { porques: [], acciones: [], linea_tiempo: [] }
+      : {};
+    setSel({ tipo, contenido, version: 0 });
   }
 
   function abrir(d: Documento) {
@@ -108,6 +114,22 @@ export default function Documentos({ detalle, recargar }: { detalle: DetalleProy
     }
   }
 
+  async function sembrarAcciones() {
+    if (!sel?.id) return;
+    setError("");
+    try {
+      const r = await api.post<{ tareas_creadas: number; ya_existian: number }>(`/api/documentos/${sel.id}/sembrar-acciones`);
+      await Promise.all([cargarDocs(), recargar()]);
+      setSel((s) => (s ? { ...s, contenido: { ...s.contenido, acciones_sembradas: true } } : s));
+      setAviso(
+        `${r.tareas_creadas} tarea(s) correctiva(s) creada(s)` +
+          (r.ya_existian ? ` (${r.ya_existian} ya existían).` : "."),
+      );
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
   async function borrar(d: Documento) {
     if (!confirm(`¿Borrar ${NOMBRE_TIPO[d.tipo] ?? d.tipo} v${d.version}?`)) return;
     await api.del(`/api/documentos/${d.id}`);
@@ -127,9 +149,9 @@ export default function Documentos({ detalle, recargar }: { detalle: DetalleProy
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-semibold">Documentos estratégicos</h3>
           <div className="flex gap-2">
-            {(["charter", "canvas", "porter"] as TipoDocumento[]).map((t) => (
+            {(["charter", "canvas", "porter", "rca"] as TipoDocumento[]).map((t) => (
               <button key={t} onClick={() => nuevo(t)} className="rounded-lg border border-[var(--borde)] px-2.5 py-1 text-xs font-medium hover:bg-black/5">
-                ＋ {t === "charter" ? "Charter" : t === "canvas" ? "Canvas" : "Porter"}
+                ＋ {t === "charter" ? "Charter" : t === "canvas" ? "Canvas" : t === "porter" ? "Porter" : "RCA"}
               </button>
             ))}
           </div>
@@ -187,17 +209,20 @@ export default function Documentos({ detalle, recargar }: { detalle: DetalleProy
             {aviso && <p className="no-imprimir text-xs font-medium text-[var(--ok)]">{aviso}</p>}
 
             {lectura ? (
-              <VistaLectura sel={sel} nombreProyecto={detalle.proyecto.nombre} />
+              <VistaLectura sel={sel} nombreProyecto={detalle.proyecto.nombre} tareas={detalle.tareas} />
             ) : (
               <>
                 {sel.tipo === "charter" && <FormCharter sel={sel} pon={pon} sembrar={sembrar} />}
                 {sel.tipo === "canvas" && <FormCampos campos={CAMPOS_CANVAS} sel={sel} pon={pon} columnas />}
                 {sel.tipo === "porter" && <FormPorter sel={sel} pon={pon} />}
+                {sel.tipo === "rca" && <FormRca sel={sel} pon={pon} sembrarAcciones={sembrarAcciones} tareas={detalle.tareas} />}
               </>
             )}
           </div>
         )}
       </div>
+
+      <CierreProyecto detalle={detalle} recargar={recargar} />
     </div>
   );
 }
@@ -534,9 +559,240 @@ function RadarPorter({ fuerzas }: { fuerzas: Record<string, { intensidad?: numbe
   );
 }
 
+// ---------- RCA: 5 porqués ramificables + acciones que crean tareas ----------
+
+// Actualiza el árbol de porqués por ruta de índices (clon inmutable simple).
+function conRuta(nodos: NodoPorque[], ruta: number[], fn: (n: NodoPorque[]) => void): NodoPorque[] {
+  const copia: NodoPorque[] = JSON.parse(JSON.stringify(nodos));
+  let nivel = copia;
+  for (const i of ruta) nivel = nivel[i].hijos;
+  fn(nivel);
+  return copia;
+}
+
+function hojas(nodos: NodoPorque[]): string[] {
+  return nodos.flatMap((n) =>
+    n.hijos.length === 0 ? (n.texto.trim() ? [n.texto.trim()] : []) : hojas(n.hijos),
+  );
+}
+
+function ArbolPorques({ nodos, ruta, cambiar, nivel }: {
+  nodos: NodoPorque[];
+  ruta: number[];
+  cambiar: (ruta: number[], fn: (n: NodoPorque[]) => void) => void;
+  nivel: number;
+}) {
+  return (
+    <ul className={nivel > 0 ? "ml-5 border-l border-[var(--grid)] pl-3" : ""}>
+      {nodos.map((n, i) => (
+        <li key={i} className="mt-1.5">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-bold text-[var(--tinta-suave)]">¿{nivel + 1}?</span>
+            <input
+              value={n.texto}
+              onChange={(e) => cambiar(ruta, (arr) => { arr[i].texto = e.target.value; })}
+              placeholder={nivel === 0 ? "¿Por qué pasó?" : "¿Y eso por qué?"}
+              className="flex-1 rounded-lg border border-[var(--borde)] px-2.5 py-1.5 text-xs"
+            />
+            {nivel < 6 && (
+              <button
+                type="button"
+                title="Preguntar por qué a esta causa"
+                onClick={() => cambiar([...ruta, i], (arr) => { arr.push({ texto: "", hijos: [] }); })}
+                className="rounded border border-[var(--borde)] px-1.5 py-1 text-[10px] font-semibold hover:bg-black/5"
+              >
+                ＋ ¿por qué?
+              </button>
+            )}
+            <button
+              type="button"
+              title="Quitar (con sus ramas)"
+              onClick={() => cambiar(ruta, (arr) => { arr.splice(i, 1); })}
+              className="px-1 text-[var(--tinta-suave)] hover:text-[var(--critico)]"
+            >
+              ✕
+            </button>
+          </div>
+          {n.hijos.length > 0 && <ArbolPorques nodos={n.hijos} ruta={[...ruta, i]} cambiar={cambiar} nivel={nivel + 1} />}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function FormRca({ sel, pon, sembrarAcciones, tareas }: {
+  sel: Seleccion;
+  pon: (k: string, v: any) => void;
+  sembrarAcciones: () => void;
+  tareas: DetalleProyecto["tareas"];
+}) {
+  const porques: NodoPorque[] = sel.contenido.porques ?? [];
+  const eventos: { fecha: string; evento: string }[] = sel.contenido.linea_tiempo ?? [];
+  const acciones: Hito[] = sel.contenido.acciones ?? [];
+  const verificacion = sel.contenido.verificacion ?? { senal: "", fecha: "" };
+  const candidatas = hojas(porques);
+  const delRca = tareas.filter((t) => t.origen_rca === sel.id);
+  const cambiar = (ruta: number[], fn: (n: NodoPorque[]) => void) => pon("porques", conRuta(porques, ruta, fn));
+  const campoCls = "mt-1 w-full rounded-lg border border-[var(--borde)] px-3 py-2 text-sm";
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block text-xs text-[var(--tinta-2)]">
+          1 · ¿Qué pasó? (hecho, no interpretación)
+          <textarea value={sel.contenido.que_paso ?? ""} onChange={(e) => pon("que_paso", e.target.value)} rows={2} className={campoCls} />
+        </label>
+        <label className="block text-xs text-[var(--tinta-2)]">
+          Impacto medible (tiempo, dinero, clientes…)
+          <textarea value={sel.contenido.impacto_medible ?? ""} onChange={(e) => pon("impacto_medible", e.target.value)} rows={2} className={campoCls} />
+        </label>
+      </div>
+
+      <div className="rounded-lg border border-[var(--grid)] p-3">
+        <div className="mb-1 flex items-center justify-between">
+          <h5 className="text-xs font-semibold">2 · Línea de tiempo</h5>
+          <button type="button" onClick={() => pon("linea_tiempo", [...eventos, { fecha: "", evento: "" }])} className="rounded border border-[var(--borde)] px-2 py-0.5 text-xs hover:bg-black/5">
+            ＋ Evento
+          </button>
+        </div>
+        {eventos.map((ev, i) => (
+          <div key={i} className="mb-1.5 flex gap-2">
+            <input type="date" value={ev.fecha} onChange={(e) => pon("linea_tiempo", eventos.map((x, j) => (j === i ? { ...x, fecha: e.target.value } : x)))} className="rounded-lg border border-[var(--borde)] px-2 py-1.5 text-xs" />
+            <input value={ev.evento} onChange={(e) => pon("linea_tiempo", eventos.map((x, j) => (j === i ? { ...x, evento: e.target.value } : x)))} placeholder="Qué ocurrió" className="flex-1 rounded-lg border border-[var(--borde)] px-2.5 py-1.5 text-xs" />
+            <button type="button" onClick={() => pon("linea_tiempo", eventos.filter((_, j) => j !== i))} className="px-1 text-[var(--tinta-suave)] hover:text-[var(--critico)]">✕</button>
+          </div>
+        ))}
+      </div>
+
+      <div className="rounded-lg border border-[var(--grid)] p-3">
+        <div className="mb-1 flex items-center justify-between">
+          <h5 className="text-xs font-semibold">3 · Los 5 porqués (ramifica si una causa tiene dos raíces)</h5>
+          <button type="button" onClick={() => pon("porques", [...porques, { texto: "", hijos: [] }])} className="rounded border border-[var(--borde)] px-2 py-0.5 text-xs hover:bg-black/5">
+            ＋ Causa
+          </button>
+        </div>
+        {porques.length === 0 && <p className="text-[10px] text-[var(--tinta-suave)]">Empieza con "＋ Causa" y sigue preguntando por qué (mínimo 3 niveles, máximo 7).</p>}
+        <ArbolPorques nodos={porques} ruta={[]} cambiar={cambiar} nivel={0} />
+      </div>
+
+      <label className="block text-xs text-[var(--tinta-2)]">
+        4 · Causa raíz (elige una hoja de la cadena)
+        <select value={sel.contenido.causa_raiz ?? ""} onChange={(e) => pon("causa_raiz", e.target.value)} className={campoCls}>
+          <option value="">— sin elegir —</option>
+          {candidatas.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </label>
+
+      <div className="rounded-lg border border-[var(--grid)] p-3">
+        <div className="mb-1 flex items-center justify-between">
+          <h5 className="text-xs font-semibold">5 · Acciones correctivas (se vuelven tareas reales)</h5>
+          <button type="button" onClick={() => pon("acciones", [...acciones, { titulo: "", fecha: "" }])} className="rounded border border-[var(--borde)] px-2 py-0.5 text-xs hover:bg-black/5">
+            ＋ Acción
+          </button>
+        </div>
+        {acciones.map((a, i) => (
+          <div key={i} className="mb-1.5 flex gap-2">
+            <input value={a.titulo} onChange={(e) => pon("acciones", acciones.map((x, j) => (j === i ? { ...x, titulo: e.target.value } : x)))} placeholder="Qué se hará para que no se repita" className="flex-1 rounded-lg border border-[var(--borde)] px-2.5 py-1.5 text-xs" />
+            <input type="date" value={a.fecha} onChange={(e) => pon("acciones", acciones.map((x, j) => (j === i ? { ...x, fecha: e.target.value } : x)))} className="rounded-lg border border-[var(--borde)] px-2 py-1.5 text-xs" />
+            <button type="button" onClick={() => pon("acciones", acciones.filter((_, j) => j !== i))} className="px-1 text-[var(--tinta-suave)] hover:text-[var(--critico)]">✕</button>
+          </div>
+        ))}
+        <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto]">
+          <label className="block text-[10px] text-[var(--tinta-2)]">
+            6 · ¿Cómo sabremos que no volvió a pasar? (crea una tarea de verificación futura)
+            <input value={verificacion.senal} onChange={(e) => pon("verificacion", { ...verificacion, senal: e.target.value })} placeholder="Señal de verificación" className="mt-1 w-full rounded-lg border border-[var(--borde)] px-2.5 py-1.5 text-xs" />
+          </label>
+          <label className="block text-[10px] text-[var(--tinta-2)]">
+            Fecha de revisión
+            <input type="date" value={verificacion.fecha} onChange={(e) => pon("verificacion", { ...verificacion, fecha: e.target.value })} className="mt-1 block rounded-lg border border-[var(--borde)] px-2 py-1.5 text-xs" />
+          </label>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between rounded-lg border border-[var(--grid)] bg-[var(--plano)] p-3">
+        <p className="text-[11px] text-[var(--tinta-2)]">
+          {sel.contenido.acciones_sembradas
+            ? `✓ Acciones sembradas: ${delRca.length} tarea(s) en el proyecto.`
+            : "El RCA debe terminar en tareas, no en un documento que nadie relee."}
+        </p>
+        <button
+          type="button"
+          onClick={sembrarAcciones}
+          disabled={!sel.id}
+          title={sel.id ? "" : "Guarda el RCA primero"}
+          className="rounded-lg bg-[var(--acento)] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
+        >
+          Crear tareas correctivas
+        </button>
+      </div>
+
+      {delRca.length > 0 && (
+        <ul className="space-y-1">
+          {delRca.map((t) => (
+            <li key={t.id} className="flex items-center gap-2 text-xs">
+              <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase ${t.estado === "hecha" ? "bg-[var(--ok)]/15 text-[var(--ok)]" : "bg-black/10"}`}>
+                {t.estado.replace("_", " ")}
+              </span>
+              <span className={t.estado === "hecha" ? "text-[var(--tinta-suave)] line-through" : ""}>{t.titulo}</span>
+              <span className="text-[10px] text-[var(--tinta-suave)]">· {fechaCorta(t.fecha_fin)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// ---------- Cierre de proyecto (CLAUDE.md §6: nada se borra, se archiva) ----------
+
+function CierreProyecto({ detalle, recargar }: { detalle: DetalleProyecto; recargar: () => Promise<void> }) {
+  const p = detalle.proyecto;
+  const [lecciones, setLecciones] = useState(p.lecciones ?? "");
+
+  async function cerrar() {
+    if (!confirm("¿Cerrar y archivar este proyecto? Seguirá consultable, pero saldrá del portafolio activo.")) return;
+    await api.patch(`/api/proyectos/${p.id}`, { estado: "cerrado", lecciones });
+    await recargar();
+  }
+
+  async function reabrir() {
+    await api.patch(`/api/proyectos/${p.id}`, { estado: "activo" });
+    await recargar();
+  }
+
+  if (p.estado === "cerrado") {
+    return (
+      <div className="tarjeta border-l-4 p-4" style={{ borderLeftColor: "var(--eje)" }}>
+        <h3 className="text-sm font-semibold">Proyecto cerrado (archivado)</h3>
+        {p.lecciones && <p className="mt-1 whitespace-pre-wrap text-xs text-[var(--tinta-2)]">Lecciones: {p.lecciones}</p>}
+        <button onClick={reabrir} className="mt-2 rounded-lg border border-[var(--borde)] px-2.5 py-1 text-xs font-medium hover:bg-black/5">
+          Reabrir proyecto
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="tarjeta p-4">
+      <h3 className="mb-1 text-sm font-semibold">Cerrar proyecto</h3>
+      <p className="mb-2 text-[10px] text-[var(--tinta-suave)]">
+        Estado final de objetivos: {detalle.objetivos.length === 0 ? "sin objetivos" : detalle.objetivos.map((o) => `${o.metrica} ${o.valor_actual}/${o.valor_objetivo}`).join(" · ")}
+        {" "}· avance {detalle.kpis.avance_pct}%
+      </p>
+      <label className="block text-xs text-[var(--tinta-2)]">
+        ¿Qué harías diferente? (lecciones aprendidas — valen oro después)
+        <textarea value={lecciones} onChange={(e) => setLecciones(e.target.value)} rows={2} className="mt-1 w-full rounded-lg border border-[var(--borde)] px-3 py-2 text-sm" />
+      </label>
+      <button onClick={cerrar} className="mt-2 rounded-lg border border-[var(--critico)] px-3 py-1.5 text-xs font-semibold text-[var(--critico)] hover:bg-[var(--critico)]/5">
+        Cerrar y archivar
+      </button>
+    </div>
+  );
+}
+
 // ---------- Vista de lectura imprimible ----------
 
-function VistaLectura({ sel, nombreProyecto }: { sel: Seleccion; nombreProyecto: string }) {
+function VistaLectura({ sel, nombreProyecto, tareas }: { sel: Seleccion; nombreProyecto: string; tareas: DetalleProyecto["tareas"] }) {
   const campos = sel.tipo === "charter" ? CAMPOS_CHARTER : CAMPOS_CANVAS;
   return (
     <article className="area-imprimible tarjeta space-y-4 p-6">
@@ -547,7 +803,9 @@ function VistaLectura({ sel, nombreProyecto }: { sel: Seleccion; nombreProyecto:
         </p>
       </header>
 
-      {sel.tipo === "porter" ? (
+      {sel.tipo === "rca" ? (
+        <LecturaRca sel={sel} tareas={tareas} />
+      ) : sel.tipo === "porter" ? (
         <>
           <FormPorter sel={sel} pon={() => {}} soloLectura />
           <dl className="space-y-2">
@@ -595,5 +853,85 @@ function VistaLectura({ sel, nombreProyecto }: { sel: Seleccion; nombreProyecto:
         </footer>
       )}
     </article>
+  );
+}
+
+function CadenaLectura({ nodos, causaRaiz, nivel }: { nodos: NodoPorque[]; causaRaiz: string; nivel: number }) {
+  return (
+    <ul className={nivel > 0 ? "ml-4 border-l border-[var(--grid)] pl-3" : ""}>
+      {nodos.map((n, i) => (
+        <li key={i} className="mt-1 text-sm">
+          <span className="text-[10px] font-bold text-[var(--tinta-suave)]">{nivel + 1}. ¿Por qué?</span>{" "}
+          <span className={n.texto.trim() === causaRaiz ? "font-bold text-[var(--critico)]" : ""}>
+            {n.texto || "—"}
+            {n.texto.trim() === causaRaiz && " ← causa raíz"}
+          </span>
+          {n.hijos.length > 0 && <CadenaLectura nodos={n.hijos} causaRaiz={causaRaiz} nivel={nivel + 1} />}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function LecturaRca({ sel, tareas }: { sel: Seleccion; tareas: DetalleProyecto["tareas"] }) {
+  const c = sel.contenido;
+  const delRca = tareas.filter((t) => t.origen_rca === sel.id);
+  return (
+    <div className="space-y-4">
+      <section>
+        <h2 className="text-xs font-bold uppercase tracking-wide text-[var(--tinta-2)]">¿Qué pasó?</h2>
+        <p className="whitespace-pre-wrap text-sm">{c.que_paso || "—"}</p>
+        {c.impacto_medible && <p className="mt-1 text-xs text-[var(--tinta-2)]">Impacto: {c.impacto_medible}</p>}
+      </section>
+
+      {(c.linea_tiempo ?? []).length > 0 && (
+        <section>
+          <h2 className="text-xs font-bold uppercase tracking-wide text-[var(--tinta-2)]">Línea de tiempo</h2>
+          <ol className="mt-1 space-y-0.5 text-sm">
+            {c.linea_tiempo.map((ev: { fecha: string; evento: string }, i: number) => (
+              <li key={i}><strong className="text-xs">{ev.fecha ? fechaCorta(ev.fecha) : "—"}</strong> · {ev.evento}</li>
+            ))}
+          </ol>
+        </section>
+      )}
+
+      <section>
+        <h2 className="text-xs font-bold uppercase tracking-wide text-[var(--tinta-2)]">Cadena de porqués</h2>
+        {(c.porques ?? []).length === 0 ? <p className="text-sm">—</p> : <CadenaLectura nodos={c.porques} causaRaiz={c.causa_raiz ?? ""} nivel={0} />}
+      </section>
+
+      {c.causa_raiz && (
+        <section className="rounded-lg border-l-4 bg-[var(--plano)] p-3" style={{ borderLeftColor: "var(--critico)" }}>
+          <h2 className="text-xs font-bold uppercase tracking-wide text-[var(--tinta-2)]">Causa raíz</h2>
+          <p className="text-sm font-semibold">{c.causa_raiz}</p>
+        </section>
+      )}
+
+      <section>
+        <h2 className="text-xs font-bold uppercase tracking-wide text-[var(--tinta-2)]">Acciones correctivas (estado real)</h2>
+        {delRca.length === 0 ? (
+          <p className="text-sm text-[var(--tinta-suave)]">Aún no se han creado las tareas correctivas.</p>
+        ) : (
+          <table className="mt-1 w-full text-sm">
+            <tbody>
+              {delRca.map((t) => (
+                <tr key={t.id} className="border-b border-[var(--grid)] last:border-0">
+                  <td className="py-1">{t.titulo}</td>
+                  <td className="py-1 text-xs">{fechaCorta(t.fecha_fin)}</td>
+                  <td className="py-1 text-xs font-semibold uppercase">{t.estado.replace("_", " ")}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      {c.verificacion?.senal && (
+        <section>
+          <h2 className="text-xs font-bold uppercase tracking-wide text-[var(--tinta-2)]">¿Cómo sabremos que no volvió a pasar?</h2>
+          <p className="text-sm">{c.verificacion.senal}{c.verificacion.fecha && ` · revisión ${fechaCorta(c.verificacion.fecha)}`}</p>
+        </section>
+      )}
+    </div>
   );
 }

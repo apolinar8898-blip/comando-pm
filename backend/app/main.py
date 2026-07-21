@@ -404,6 +404,56 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
         repo.guardar()
         return {"ok": True, "hitos_creados": creados, "hitos_existentes": len(hitos) - creados}
 
+    @app.post("/api/documentos/{did}/sembrar-acciones")
+    def sembrar_acciones_rca(did: str):
+        """El RCA debe terminar en tareas, no en un PDF (CLAUDE.md §9):
+        cada acción correctiva y la señal de verificación se vuelven tareas
+        reales del proyecto, marcadas con origen_rca (idempotente por título)."""
+        doc = _obtener(repo.documentos, did, "Documento")
+        if doc.tipo != "rca" or not doc.proyecto_id:
+            raise HTTPException(status_code=400, detail="Solo un RCA de proyecto puede crear acciones")
+
+        acciones = [
+            a for a in doc.contenido.get("acciones", [])
+            if a.get("titulo", "").strip() and a.get("fecha")
+        ]
+        verificacion = doc.contenido.get("verificacion") or {}
+        pendientes: list[tuple[str, str, str]] = [  # (titulo, fecha, clave)
+            (a["titulo"].strip(), a["fecha"], "accion") for a in acciones
+        ]
+        if verificacion.get("senal", "").strip() and verificacion.get("fecha"):
+            pendientes.append(
+                (f"Verificar: {verificacion['senal'].strip()}", verificacion["fecha"], "verificacion")
+            )
+        if not pendientes:
+            raise HTTPException(
+                status_code=400,
+                detail="El RCA no tiene acciones ni señal de verificación con fecha",
+            )
+
+        existentes = {
+            t.titulo.strip().lower()
+            for t in repo.tareas_de(doc.proyecto_id) if t.origen_rca == did
+        }
+        creadas = 0
+        for titulo, fecha, _ in pendientes:
+            if titulo.lower() in existentes:
+                continue
+            tarea = _validar(Tarea, {
+                "proyecto_id": doc.proyecto_id,
+                "titulo": titulo,
+                "fecha_inicio": fecha,
+                "fecha_fin": fecha,
+                "importante": True,
+                "esfuerzo_estimado_h": 1,
+                "origen_rca": did,
+            })
+            repo.tareas[tarea.id] = tarea
+            creadas += 1
+        doc.contenido["acciones_sembradas"] = True
+        repo.guardar()
+        return {"ok": True, "tareas_creadas": creadas, "ya_existian": len(pendientes) - creadas}
+
     # ----- Demo -----
 
     @app.post("/api/demo/sembrar")

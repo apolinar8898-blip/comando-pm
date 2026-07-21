@@ -46,7 +46,7 @@ cd backend
 - **Seguridad mínima**: si defines `APP_PASSWORD` en el backend, la API exige el
   header `X-Token`; guarda el valor en localStorage como `comando_pm_token`.
 
-## Estado (Fases 1, 2 y 3 completas)
+## Estado (las 4 fases del prompt maestro completas)
 
 - ✅ Dominio puro con tests: salud calculada, avance ponderado, SPI (EVM
   simplificado), Eisenhower, sugerencia Ivy Lee (máx. 6), ruta crítica.
@@ -62,6 +62,12 @@ cd backend
   **siembra de hitos reales en el Gantt**, canvas, Porter con radar SVG,
   objetivos SMART con validación dura, fase del proyecto en el roadmap y
   vista de lectura imprimible.
-- ⏳ Siguiente (CLAUDE.md §8, Fase 4): matriz de retos impacto×probabilidad,
-  RCA con 5 porqués ramificables + acciones que crean tareas, cierre de
-  proyecto con lecciones aprendidas.
+- ✅ Pestaña Retos: mapa de calor impacto×probabilidad 5×5 (zonas alineadas
+  con la regla de salud), CRUD de retos, y "hacer RCA" desde un reto
+  materializado.
+- ✅ RCA con 5 porqués ramificables (árbol de hasta 7 niveles), causa raíz
+  elegida de las hojas, línea de tiempo, y **acciones correctivas + señal de
+  verificación que se convierten en tareas reales** (origen_rca); la vista de
+  lectura muestra el estado real de cada acción.
+- ✅ Cierre de proyecto: lecciones aprendidas + archivado (nada se borra) y
+  reapertura.
