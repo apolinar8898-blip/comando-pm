@@ -47,12 +47,19 @@ export default function Hoy() {
 
   async function agregar(id: string) {
     if (!hoy) return;
-    try {
-      await api.put("/api/hoy", { tarea_ids: [...hoy.tareas.map((t) => t.id), id] });
-      await cargar();
-    } catch (e) {
-      setError(String((e as Error).message));
-    }
+    // El error (p. ej. el límite de 6) llega por el toast global; la vista no se destruye.
+    await api.put("/api/hoy", { tarea_ids: [...hoy.tareas.map((t) => t.id), id] }).catch(() => {});
+    await cargar();
+  }
+
+  async function mover(i: number, delta: number) {
+    if (!hoy) return;
+    const ids = hoy.tareas.map((t) => t.id);
+    const j = i + delta;
+    if (j < 0 || j >= ids.length) return;
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+    await api.put("/api/hoy", { tarea_ids: ids });
+    await cargar();
   }
 
   async function cerrarDia() {
@@ -94,6 +101,26 @@ export default function Hoy() {
           {hoy.tareas.map((t, i) => (
             <li key={t.id} className="tarjeta flex items-center gap-3 px-4 py-3">
               <span className="w-5 text-center text-lg font-bold text-[var(--tinta-suave)]">{i + 1}</span>
+              {!hoy.cerrado && hoy.tareas.length > 1 && (
+                <span className="flex flex-col">
+                  <button
+                    onClick={() => mover(i, -1)}
+                    disabled={i === 0}
+                    className="leading-none text-[var(--tinta-suave)] hover:text-[var(--tinta)] disabled:opacity-20"
+                    aria-label={`Subir ${t.titulo}`}
+                  >
+                    ▲
+                  </button>
+                  <button
+                    onClick={() => mover(i, 1)}
+                    disabled={i === hoy.tareas.length - 1}
+                    className="leading-none text-[var(--tinta-suave)] hover:text-[var(--tinta)] disabled:opacity-20"
+                    aria-label={`Bajar ${t.titulo}`}
+                  >
+                    ▼
+                  </button>
+                </span>
+              )}
               <input
                 type="checkbox"
                 checked={t.estado === "hecha"}

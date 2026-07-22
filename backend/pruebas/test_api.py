@@ -164,7 +164,7 @@ def test_objetivos_smart_validacion_dura(tmp_path):
     assert api.delete(f"/api/objetivos/{ok['id']}").json()["ok"]
 
 
-def test_rca_siembra_acciones_como_tareas(tmp_path):
+def test_rca_ignora_acciones_incompletas(tmp_path):
     api = cliente(tmp_path)
     api.post("/api/demo/sembrar")
     pid = api.get("/api/portafolio").json()["proyectos"][0]["id"]
@@ -261,6 +261,97 @@ def test_rca_siembra_acciones_como_tareas(tmp_path):
     # Un RCA sin acciones ni verificación no puede sembrar
     vacio = api.post("/api/documentos", json={"proyecto_id": pid, "tipo": "rca"}).json()
     assert api.post(f"/api/documentos/{vacio['id']}/sembrar-acciones").status_code == 400
+
+
+def test_blindaje_de_persistencia(tmp_path):
+    """Dictamen del consejo: escritura atómica, respaldo diario y recuperación."""
+    from app.repositorio import Repositorio
+    from app import datos_demo
+
+    ruta = tmp_path / "datos.json"
+    repo = Repositorio(ruta=ruta)
+    datos_demo.sembrar(repo)
+    repo.guardar()  # segunda escritura del día: ya hay archivo → crea respaldo
+    assert ruta.exists() and not ruta.with_name(ruta.name + ".tmp").exists()
+    respaldos = list((tmp_path / "respaldos").glob("datos-*.json"))
+    assert len(respaldos) == 1  # uno por día, no por guardado
+
+    # Archivo corrupto: se aparta y se recupera del respaldo, sin morir
+    ruta.write_text('{"proyectos": [{"esto no es', encoding="utf-8")
+    recuperado = Repositorio(ruta=ruta)
+    assert len(recuperado.proyectos) == 2  # recuperó del respaldo diario
+    assert list(tmp_path.glob("datos.corrupto-*.json"))  # el dañado quedó apartado
+
+    # Sin respaldo utilizable: arranca vacío, jamás inarrancable
+    sucio = tmp_path / "solo" / "datos.json"
+    sucio.parent.mkdir()
+    sucio.write_text("basura", encoding="utf-8")
+    assert Repositorio(ruta=sucio).vacio()
+
+
+def test_api_endurecida(tmp_path):
+    """PATCH no muta campos inmutables, 422 legibles y fechas coherentes."""
+    api = cliente(tmp_path)
+    api.post("/api/demo/sembrar")
+    pid = api.get("/api/portafolio").json()["proyectos"][0]["id"]
+    tarea = api.get(f"/api/tareas?proyecto_id={pid}").json()["tareas"][0]
+
+    # id y proyecto_id se ignoran en PATCH (mutarlos rompía referencias)
+    r = api.patch(f"/api/tareas/{tarea['id']}", json={"id": "hackeado", "proyecto_id": "otro"})
+    assert r.status_code == 200
+    assert r.json()["id"] == tarea["id"] and r.json()["proyecto_id"] == pid
+
+    # Estado inválido: 422 legible, no 500
+    r = api.patch(f"/api/tareas/{tarea['id']}", json={"estado": "volando"})
+    assert r.status_code == 422 and "estado" in r.json()["detail"]
+
+    # Fechas invertidas: rechazadas (distorsionaban SPI y semáforo)
+    r = api.post(f"/api/proyectos/{pid}/tareas", json={
+        "titulo": "invertida", "fecha_inicio": "2026-08-10", "fecha_fin": "2026-08-01",
+    })
+    assert r.status_code == 422
+    # Hito con duración: rechazado (un hito dura 0 días)
+    r = api.post(f"/api/proyectos/{pid}/tareas", json={
+        "titulo": "hito largo", "es_hito": True,
+        "fecha_inicio": "2026-08-01", "fecha_fin": "2026-08-05",
+    })
+    assert r.status_code == 422
+
+    # Export completo con cabecera de descarga
+    r = api.get("/api/export")
+    assert r.status_code == 200
+    assert "attachment" in r.headers["content-disposition"]
+    assert {"proyectos", "tareas", "documentos"} <= set(r.json())
+
+
+def test_arrastre_de_pendientes_a_manana(tmp_path):
+    """§4.1: lo pendiente del último plan encabeza la sugerencia de hoy."""
+    from datetime import date, timedelta
+    from app.main import crear_app
+    from app.modelos import PlanDia, Tarea
+    from app.repositorio import Repositorio
+    from app import datos_demo
+
+    repo = Repositorio(ruta=tmp_path / "datos.json")
+    datos_demo.sembrar(repo)
+    # Ayer quedó en el plan una tarea de cuadrante IV sin terminar: la
+    # sugerencia automática jamás la elegiría, el arrastre sí.
+    pid = next(iter(repo.proyectos))
+    rezagada = Tarea(
+        proyecto_id=pid, titulo="Ordenar la carpeta de creativos",
+        importante=False, urgente_manual=False,
+        fecha_inicio=date.today() + timedelta(days=40),
+        fecha_fin=date.today() + timedelta(days=45),
+    )
+    repo.tareas[rezagada.id] = rezagada
+    ayer = date.today() - timedelta(days=1)
+    repo.poner_plan(PlanDia(fecha=ayer, tarea_ids=[rezagada.id], cerrado=True))
+    repo.guardar()
+
+    api = TestClient(crear_app(repo))
+    hoy = api.get("/api/hoy").json()
+    assert hoy["tareas"][0]["id"] == rezagada.id  # arrastrada, y al frente
+    assert len(hoy["tareas"]) <= 6
 
 
 def test_persistencia_en_archivo(tmp_path):

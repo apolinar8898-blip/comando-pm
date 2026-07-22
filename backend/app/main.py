@@ -6,11 +6,16 @@ sale de aquí, que a su vez delega en el paquete dominio/ (lógica pura).
 from __future__ import annotations
 
 import os
-from datetime import date
+import secrets
+import threading
+from datetime import date, timedelta
+from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Header
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import datos_demo
@@ -33,8 +38,23 @@ from .repositorio import Repositorio
 
 def _verificar_token(x_token: Optional[str] = Header(default=None)) -> None:
     esperado = os.environ.get("APP_PASSWORD")
-    if esperado and x_token != esperado:
+    if esperado and not secrets.compare_digest(x_token or "", esperado):
         raise HTTPException(status_code=401, detail="Token inválido")
+
+
+# Un candado por petición a la API: los endpoints corren en un threadpool y
+# mutan/guardan el mismo almacén; serializarlos elimina carreras y escrituras
+# concurrentes al archivo. threading.Lock (no RLock): puede liberarse desde
+# otro hilo del pool, cosa que el teardown de la dependencia puede necesitar.
+CANDADO = threading.Lock()
+
+
+def _candado():
+    CANDADO.acquire()
+    try:
+        yield
+    finally:
+        CANDADO.release()
 
 
 # ---------- Cuerpos de petición ----------
@@ -51,7 +71,9 @@ class CuerpoCierre(BaseModel):
 
 def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
     repo = repo or Repositorio()
-    app = FastAPI(title="Comando PM", dependencies=[Depends(_verificar_token)])
+    app = FastAPI(title="Comando PM")
+    # El token y el candado gatean SOLO la API; la SPA estática se sirve libre.
+    api = APIRouter(dependencies=[Depends(_verificar_token), Depends(_candado)])
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -104,9 +126,25 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
             "proyecto_color": proyecto.color if proyecto else "#888",
         }
 
+    def _validar(modelo_cls, datos: dict) -> Any:
+        """Valida contra el modelo y traduce el error a un 422 legible."""
+        try:
+            return modelo_cls.model_validate(datos)
+        except Exception as e:  # ValidationError
+            errores = getattr(e, "errors", lambda: [{"msg": str(e)}])()
+            detalle = "; ".join(
+                f"{'.'.join(str(p) for p in err.get('loc', []))}: {err.get('msg', '')}"
+                for err in errores
+            )
+            raise HTTPException(status_code=422, detail=detalle)
+
+    # Campos que un PATCH jamás puede tocar: mutarlos rompe las referencias
+    # (claves de dicts, dependencias, origen_rca) de forma silenciosa.
+    INMUTABLES = {"id", "proyecto_id", "creado_en"}
+
     def _aplicar_cambios(modelo: BaseModel, cambios: dict) -> Any:
-        combinado = {**modelo.model_dump(), **cambios}
-        return type(modelo).model_validate(combinado)
+        limpios = {k: v for k, v in cambios.items() if k not in INMUTABLES}
+        return _validar(type(modelo), {**modelo.model_dump(), **limpios})
 
     def _obtener(coleccion: dict, id_: str, nombre: str) -> Any:
         item = coleccion.get(id_)
@@ -116,13 +154,13 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
 
     # ----- Salud del servicio -----
 
-    @app.get("/api/salud")
+    @api.get("/api/salud")
     def salud_servicio():
         return {"ok": True, "proyectos": len(repo.proyectos)}
 
     # ----- Portafolio y proyectos -----
 
-    @app.get("/api/portafolio")
+    @api.get("/api/portafolio")
     def portafolio():
         hoy = date.today()
         _asegurar_snapshots(hoy)
@@ -136,14 +174,14 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
             ]
         }
 
-    @app.post("/api/proyectos")
+    @api.post("/api/proyectos")
     def crear_proyecto(datos: dict):
-        proyecto = Proyecto.model_validate(datos)
+        proyecto = _validar(Proyecto, datos)
         repo.proyectos[proyecto.id] = proyecto
         repo.guardar()
         return proyecto.model_dump(mode="json")
 
-    @app.get("/api/proyectos/{pid}")
+    @api.get("/api/proyectos/{pid}")
     def detalle_proyecto(pid: str):
         hoy = date.today()
         proyecto = _obtener(repo.proyectos, pid, "Proyecto")
@@ -158,7 +196,7 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
             "snapshots": [s.model_dump(mode="json") for s in repo.snapshots_de(pid)],
         }
 
-    @app.patch("/api/proyectos/{pid}")
+    @api.patch("/api/proyectos/{pid}")
     def editar_proyecto(pid: str, cambios: dict):
         proyecto = _obtener(repo.proyectos, pid, "Proyecto")
         repo.proyectos[pid] = _aplicar_cambios(proyecto, cambios)
@@ -167,7 +205,7 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
 
     # ----- Tareas -----
 
-    @app.get("/api/tareas")
+    @api.get("/api/tareas")
     def listar_tareas(proyecto_id: Optional[str] = None):
         """Tareas expandidas (con cuadrante y proyecto) para Eisenhower y plan semanal.
 
@@ -182,22 +220,22 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
         tareas = sorted(tareas, key=lambda t: (t.fecha_fin, t.fecha_inicio))
         return {"tareas": [_tarea_expandida(t, hoy) for t in tareas]}
 
-    @app.post("/api/proyectos/{pid}/tareas")
+    @api.post("/api/proyectos/{pid}/tareas")
     def crear_tarea(pid: str, datos: dict):
         _obtener(repo.proyectos, pid, "Proyecto")
-        tarea = Tarea.model_validate({**datos, "proyecto_id": pid})
+        tarea = _validar(Tarea, {**datos, "proyecto_id": pid})
         repo.tareas[tarea.id] = tarea
         repo.guardar()
         return _tarea_expandida(tarea, date.today())
 
-    @app.patch("/api/tareas/{tid}")
+    @api.patch("/api/tareas/{tid}")
     def editar_tarea(tid: str, cambios: dict):
         tarea = _obtener(repo.tareas, tid, "Tarea")
         repo.tareas[tid] = _aplicar_cambios(tarea, cambios)
         repo.guardar()
         return _tarea_expandida(repo.tareas[tid], date.today())
 
-    @app.delete("/api/tareas/{tid}")
+    @api.delete("/api/tareas/{tid}")
     def borrar_tarea(tid: str):
         _obtener(repo.tareas, tid, "Tarea")
         del repo.tareas[tid]
@@ -206,15 +244,15 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
 
     # ----- Retos -----
 
-    @app.post("/api/proyectos/{pid}/retos")
+    @api.post("/api/proyectos/{pid}/retos")
     def crear_reto(pid: str, datos: dict):
         _obtener(repo.proyectos, pid, "Proyecto")
-        reto = Reto.model_validate({**datos, "proyecto_id": pid})
+        reto = _validar(Reto, {**datos, "proyecto_id": pid})
         repo.retos[reto.id] = reto
         repo.guardar()
         return reto.model_dump(mode="json")
 
-    @app.patch("/api/retos/{rid}")
+    @api.patch("/api/retos/{rid}")
     def editar_reto(rid: str, cambios: dict):
         reto = _obtener(repo.retos, rid, "Reto")
         repo.retos[rid] = _aplicar_cambios(reto, cambios)
@@ -223,13 +261,22 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
 
     # ----- Hoy (método Ivy Lee) -----
 
-    @app.get("/api/hoy")
+    @api.get("/api/hoy")
     def hoy_():
         hoy = date.today()
         _asegurar_snapshots(hoy)
         plan = repo.plan_de(hoy)
         if plan is None:
-            plan = PlanDia(fecha=hoy, tarea_ids=sugerir_plan_dia(repo.tareas_de_activos(), hoy))
+            # Ivy Lee puro (§4.1): lo pendiente del último plan se arrastra al
+            # frente de la sugerencia de hoy; el resto se completa hasta 6.
+            ayer = repo.plan_de(hoy - timedelta(days=1))
+            arrastradas = [
+                tid for tid in (ayer.tarea_ids if ayer else [])
+                if tid in repo.tareas and repo.tareas[tid].estado != "hecha"
+            ]
+            sugeridas = sugerir_plan_dia(repo.tareas_de_activos(), hoy)
+            ids = (arrastradas + [t for t in sugeridas if t not in arrastradas])[:6]
+            plan = PlanDia(fecha=hoy, tarea_ids=ids)
             repo.poner_plan(plan)
             repo.guardar()
 
@@ -260,7 +307,7 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
             "retos_arden": retos_abiertos[:3],
         }
 
-    @app.put("/api/hoy")
+    @api.put("/api/hoy")
     def poner_plan_hoy(cuerpo: CuerpoPlan):
         hoy = date.today()
         try:
@@ -276,7 +323,7 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
         repo.guardar()
         return {"ok": True, "tarea_ids": ids}
 
-    @app.post("/api/hoy/cerrar")
+    @api.post("/api/hoy/cerrar")
     def cerrar_dia(cuerpo: CuerpoCierre):
         hoy = date.today()
         plan = repo.plan_de(hoy)
@@ -292,19 +339,7 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
 
     # ----- Objetivos SMART -----
 
-    def _validar(modelo_cls, datos: dict) -> Any:
-        """Valida contra el modelo y traduce el error a un 422 legible."""
-        try:
-            return modelo_cls.model_validate(datos)
-        except Exception as e:  # ValidationError
-            errores = getattr(e, "errors", lambda: [{"msg": str(e)}])()
-            detalle = "; ".join(
-                f"{'.'.join(str(p) for p in err.get('loc', []))}: {err.get('msg', '')}"
-                for err in errores
-            )
-            raise HTTPException(status_code=422, detail=detalle)
-
-    @app.post("/api/proyectos/{pid}/objetivos")
+    @api.post("/api/proyectos/{pid}/objetivos")
     def crear_objetivo(pid: str, datos: dict):
         _obtener(repo.proyectos, pid, "Proyecto")
         objetivo = _validar(Objetivo, {**datos, "proyecto_id": pid})
@@ -312,14 +347,14 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
         repo.guardar()
         return objetivo.model_dump(mode="json")
 
-    @app.patch("/api/objetivos/{oid}")
+    @api.patch("/api/objetivos/{oid}")
     def editar_objetivo(oid: str, cambios: dict):
         objetivo = _obtener(repo.objetivos, oid, "Objetivo")
-        repo.objetivos[oid] = _validar(Objetivo, {**objetivo.model_dump(), **cambios})
+        repo.objetivos[oid] = _aplicar_cambios(objetivo, cambios)
         repo.guardar()
         return repo.objetivos[oid].model_dump(mode="json")
 
-    @app.delete("/api/objetivos/{oid}")
+    @api.delete("/api/objetivos/{oid}")
     def borrar_objetivo(oid: str):
         _obtener(repo.objetivos, oid, "Objetivo")
         del repo.objetivos[oid]
@@ -328,7 +363,7 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
 
     # ----- Documentos estratégicos (JSONB versionado, CLAUDE.md §5) -----
 
-    @app.get("/api/documentos")
+    @api.get("/api/documentos")
     def listar_documentos(proyecto_id: Optional[str] = None):
         docs = list(repo.documentos.values())
         if proyecto_id:
@@ -337,7 +372,7 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
         docs.sort(key=lambda d: d.creado_en)
         return {"documentos": [d.model_dump(mode="json") for d in docs]}
 
-    @app.post("/api/documentos")
+    @api.post("/api/documentos")
     def crear_documento(datos: dict):
         if datos.get("proyecto_id"):
             _obtener(repo.proyectos, datos["proyecto_id"], "Proyecto")
@@ -346,7 +381,7 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
         repo.guardar()
         return doc.model_dump(mode="json")
 
-    @app.put("/api/documentos/{did}")
+    @api.put("/api/documentos/{did}")
     def versionar_documento(did: str, datos: dict):
         """Guardar = nueva versión; la anterior queda en el historial."""
         doc = _obtener(repo.documentos, did, "Documento")
@@ -360,14 +395,14 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
         repo.guardar()
         return doc.model_dump(mode="json")
 
-    @app.delete("/api/documentos/{did}")
+    @api.delete("/api/documentos/{did}")
     def borrar_documento(did: str):
         _obtener(repo.documentos, did, "Documento")
         del repo.documentos[did]
         repo.guardar()
         return {"ok": True}
 
-    @app.post("/api/documentos/{did}/sembrar")
+    @api.post("/api/documentos/{did}/sembrar")
     def sembrar_charter(did: str):
         """El charter no es papel muerto: sus hitos de alto nivel se convierten
         en tareas-hito reales del proyecto (idempotente por título)."""
@@ -404,7 +439,7 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
         repo.guardar()
         return {"ok": True, "hitos_creados": creados, "hitos_existentes": len(hitos) - creados}
 
-    @app.post("/api/documentos/{did}/sembrar-acciones")
+    @api.post("/api/documentos/{did}/sembrar-acciones")
     def sembrar_acciones_rca(did: str):
         """El RCA debe terminar en tareas, no en un PDF (CLAUDE.md §9):
         cada acción correctiva y la señal de verificación se vuelven tareas
@@ -454,14 +489,40 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
         repo.guardar()
         return {"ok": True, "tareas_creadas": creadas, "ya_existian": len(pendientes) - creadas}
 
+    # ----- Export de respaldo (CLAUDE.md §9: sin backup no hay confianza) -----
+
+    @api.get("/api/export")
+    def exportar():
+        nombre = f"comando-pm-export-{date.today().isoformat()}.json"
+        return JSONResponse(
+            repo.volcado(),
+            headers={"Content-Disposition": f'attachment; filename="{nombre}"'},
+        )
+
     # ----- Demo -----
 
-    @app.post("/api/demo/sembrar")
+    @api.post("/api/demo/sembrar")
     def sembrar_demo():
         if not repo.vacio():
             raise HTTPException(status_code=409, detail="Ya hay datos; la demo no los pisa")
         datos_demo.sembrar(repo)
         return {"ok": True, "proyectos": len(repo.proyectos)}
+
+    app.include_router(api)
+
+    # ----- SPA compilada (arranque de un solo proceso) -----
+    # Si existe frontend/dist (npm run build), FastAPI la sirve en / y la app
+    # completa vive en http://localhost:8000 sin necesidad de Vite.
+    dist = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
+    if dist.exists():
+        app.mount("/assets", StaticFiles(directory=dist / "assets"), name="assets")
+
+        @app.get("/{ruta:path}", include_in_schema=False)
+        def spa(ruta: str):
+            archivo = dist / ruta
+            if ruta and archivo.is_file():
+                return FileResponse(archivo)
+            return FileResponse(dist / "index.html")
 
     app.state.repo = repo
     return app

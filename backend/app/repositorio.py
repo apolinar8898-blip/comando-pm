@@ -3,12 +3,19 @@
 v1: almacén en memoria con persistencia a archivo JSON (datos/comando-pm.json).
 Suficiente y confiable para una herramienta personal; la migración a Supabase
 (schema.sql ya está listo) es un cambio solo de esta capa.
+
+Blindaje de la persistencia (dictamen del consejo):
+- Escritura atómica: tmp + os.replace, nunca truncar el archivo en el lugar.
+- Respaldo diario en datos/respaldos/ (retiene los últimos 30).
+- Archivo corrupto: se aparta con marca de tiempo, se recupera del último
+  respaldo, y si no hay, se arranca vacío — la app nunca se vuelve inarrancable.
 """
 from __future__ import annotations
 
 import json
 import os
-from datetime import date
+import shutil
+from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
 
@@ -41,10 +48,11 @@ class Repositorio:
 
     # ---------- Persistencia ----------
 
-    def _cargar(self) -> None:
-        if not self.ruta.exists():
-            return
-        crudo = json.loads(self.ruta.read_text(encoding="utf-8"))
+    @property
+    def _dir_respaldos(self) -> Path:
+        return self.ruta.parent / "respaldos"
+
+    def _poblar(self, crudo: dict) -> None:
         self.proyectos = {d["id"]: Proyecto.model_validate(d) for d in crudo.get("proyectos", [])}
         self.tareas = {d["id"]: Tarea.model_validate(d) for d in crudo.get("tareas", [])}
         self.retos = {d["id"]: Reto.model_validate(d) for d in crudo.get("retos", [])}
@@ -53,9 +61,34 @@ class Repositorio:
         self.planes_dia = {d["fecha"]: PlanDia.model_validate(d) for d in crudo.get("planes_dia", [])}
         self.snapshots = [KpiSnapshot.model_validate(d) for d in crudo.get("snapshots", [])]
 
-    def guardar(self) -> None:
-        self.ruta.parent.mkdir(parents=True, exist_ok=True)
-        crudo = {
+    def _cargar(self) -> None:
+        if not self.ruta.exists():
+            return
+        try:
+            self._poblar(json.loads(self.ruta.read_text(encoding="utf-8")))
+            return
+        except Exception as e:  # JSON roto o datos inválidos: nunca morir al arrancar
+            marca = datetime.now().strftime("%Y%m%d-%H%M%S")
+            danado = self.ruta.with_name(f"{self.ruta.stem}.corrupto-{marca}.json")
+            self.ruta.replace(danado)
+            print(f"[comando-pm] ADVERTENCIA: archivo de datos dañado ({e}). "
+                  f"Se apartó en {danado.name}; intentando recuperar del último respaldo…")
+
+        respaldos = sorted(self._dir_respaldos.glob(f"{self.ruta.stem}-*.json"), reverse=True)
+        for respaldo in respaldos:
+            try:
+                self._poblar(json.loads(respaldo.read_text(encoding="utf-8")))
+                shutil.copy2(respaldo, self.ruta)
+                print(f"[comando-pm] Recuperado del respaldo {respaldo.name}.")
+                return
+            except Exception:
+                continue
+        print("[comando-pm] Sin respaldo utilizable: se arranca con datos vacíos. "
+              "El archivo dañado sigue disponible junto a los datos.")
+
+    def volcado(self) -> dict:
+        """Serialización completa del almacén (persistencia y export comparten esto)."""
+        return {
             "proyectos": [p.model_dump(mode="json") for p in self.proyectos.values()],
             "tareas": [t.model_dump(mode="json") for t in self.tareas.values()],
             "retos": [r.model_dump(mode="json") for r in self.retos.values()],
@@ -64,7 +97,27 @@ class Repositorio:
             "planes_dia": [p.model_dump(mode="json") for p in self.planes_dia.values()],
             "snapshots": [s.model_dump(mode="json") for s in self.snapshots],
         }
-        self.ruta.write_text(json.dumps(crudo, ensure_ascii=False, indent=1), encoding="utf-8")
+
+    def _respaldo_diario(self) -> None:
+        """Primera escritura del día: copia el archivo actual a respaldos/ (retiene 30)."""
+        if not self.ruta.exists():
+            return
+        destino = self._dir_respaldos / f"{self.ruta.stem}-{date.today().isoformat()}.json"
+        if destino.exists():
+            return
+        self._dir_respaldos.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(self.ruta, destino)
+        viejos = sorted(self._dir_respaldos.glob(f"{self.ruta.stem}-*.json"))[:-30]
+        for viejo in viejos:
+            viejo.unlink()
+
+    def guardar(self) -> None:
+        self.ruta.parent.mkdir(parents=True, exist_ok=True)
+        self._respaldo_diario()
+        contenido = json.dumps(self.volcado(), ensure_ascii=False, indent=1)
+        tmp = self.ruta.with_name(self.ruta.name + ".tmp")
+        tmp.write_text(contenido, encoding="utf-8")
+        os.replace(tmp, self.ruta)  # rename atómico: nunca queda un archivo a medias
 
     # ---------- Consultas ----------
 

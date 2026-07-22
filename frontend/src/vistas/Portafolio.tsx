@@ -36,18 +36,43 @@ export default function Portafolio() {
     await cargar();
   }
 
+  async function exportarRespaldo() {
+    // fetch directo (no api.get) para poder descargar el blob con su nombre
+    const token = localStorage.getItem("comando_pm_token");
+    const r = await fetch("/api/export", { headers: token ? { "X-Token": token } : {} });
+    if (!r.ok) {
+      window.dispatchEvent(new CustomEvent("api-error", { detail: "No se pudo exportar el respaldo" }));
+      return;
+    }
+    const url = URL.createObjectURL(await r.blob());
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `comando-pm-export-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   const activos = proyectos.filter((p) => p.estado === "activo");
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-bold">Portafolio</h1>
-        <button
-          onClick={() => setCreando(!creando)}
-          className="rounded-lg bg-[var(--tinta)] px-3 py-1.5 text-sm font-medium text-white"
-        >
-          + Nuevo proyecto
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={exportarRespaldo}
+            title="Descarga todos los datos en un JSON (CLAUDE.md §9: sin backup no hay confianza)"
+            className="rounded-lg border border-[var(--borde)] px-3 py-1.5 text-sm font-medium hover:bg-black/5"
+          >
+            ⬇ Respaldo
+          </button>
+          <button
+            onClick={() => setCreando(!creando)}
+            className="rounded-lg bg-[var(--tinta)] px-3 py-1.5 text-sm font-medium text-white"
+          >
+            + Nuevo proyecto
+          </button>
+        </div>
       </div>
 
       {creando && (

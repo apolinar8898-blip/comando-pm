@@ -16,16 +16,32 @@ type Pestana = "dashboard" | "gantt" | "semana" | "eisenhower" | "tareas" | "ret
 export default function Proyecto() {
   const { id } = useParams<{ id: string }>();
   const [detalle, setDetalle] = useState<DetalleProyecto | null>(null);
+  const [errorCarga, setErrorCarga] = useState("");
   const [pestana, setPestana] = useState<Pestana>("dashboard");
 
   const cargar = useCallback(async () => {
-    if (id) setDetalle(await api.get<DetalleProyecto>(`/api/proyectos/${id}`));
+    if (!id) return;
+    try {
+      setDetalle(await api.get<DetalleProyecto>(`/api/proyectos/${id}`));
+      setErrorCarga("");
+    } catch (e) {
+      setErrorCarga(String((e as Error).message));
+    }
   }, [id]);
 
   useEffect(() => {
     cargar();
   }, [cargar]);
 
+  if (errorCarga && !detalle)
+    return (
+      <div className="tarjeta mx-auto max-w-md p-6 text-center">
+        <p className="text-sm text-[var(--critico)]">No se pudo cargar el proyecto: {errorCarga}</p>
+        <button onClick={cargar} className="mt-3 rounded-lg bg-[var(--tinta)] px-3 py-1.5 text-sm text-white">
+          Reintentar
+        </button>
+      </div>
+    );
   if (!detalle) return <p className="text-sm text-[var(--tinta-suave)]">Cargando…</p>;
   const { proyecto, kpis, tareas, retos, objetivos, snapshots, ruta_critica } = detalle;
 

@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { NavLink, Route, Routes } from "react-router-dom";
 import Eisenhower from "./vistas/Eisenhower";
 import Hoy from "./vistas/Hoy";
@@ -45,6 +46,48 @@ export default function App() {
           <Route path="/proyecto/:id" element={<Proyecto />} />
         </Routes>
       </main>
+      <AvisosDeError />
+    </div>
+  );
+}
+
+// Toasts de error de la API (evento "api-error" de api.ts): ningún fallo de
+// red vuelve a ser silencioso, y ninguno destruye la vista.
+function AvisosDeError() {
+  const [avisos, setAvisos] = useState<{ id: number; texto: string }[]>([]);
+
+  useEffect(() => {
+    let siguiente = 1;
+    function alError(e: Event) {
+      const texto = String((e as CustomEvent).detail ?? "Error desconocido");
+      const id = siguiente++;
+      setAvisos((prev) => [...prev.slice(-2), { id, texto }]);
+      setTimeout(() => setAvisos((prev) => prev.filter((a) => a.id !== id)), 7000);
+    }
+    window.addEventListener("api-error", alError);
+    return () => window.removeEventListener("api-error", alError);
+  }, []);
+
+  if (avisos.length === 0) return null;
+  return (
+    <div className="fixed right-4 bottom-4 z-50 space-y-2" role="alert" aria-live="assertive">
+      {avisos.map((a) => (
+        <div
+          key={a.id}
+          className="tarjeta flex max-w-sm items-start gap-2 border-l-4 px-4 py-3 text-sm shadow-lg"
+          style={{ borderLeftColor: "var(--critico)" }}
+        >
+          <span aria-hidden>⚠</span>
+          <span className="flex-1">{a.texto}</span>
+          <button
+            onClick={() => setAvisos((prev) => prev.filter((x) => x.id !== a.id))}
+            className="text-[var(--tinta-suave)] hover:text-[var(--tinta)]"
+            aria-label="Cerrar aviso"
+          >
+            ✕
+          </button>
+        </div>
+      ))}
     </div>
   );
 }

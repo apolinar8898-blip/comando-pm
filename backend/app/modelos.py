@@ -8,7 +8,7 @@ from datetime import date, datetime
 from typing import Literal, Optional
 from uuid import uuid4
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 EstadoProyecto = Literal["activo", "pausado", "cerrado", "cancelado"]
 EstadoTarea = Literal["pendiente", "en_curso", "hecha", "bloqueada"]
@@ -75,6 +75,15 @@ class Tarea(BaseModel):
     esfuerzo_estimado_h: float = 1
     esfuerzo_real_h: Optional[float] = None
     origen_rca: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _fechas_coherentes(self):
+        """Una tarea invertida distorsiona SPI, semáforo y ruta crítica."""
+        if self.fecha_fin < self.fecha_inicio:
+            raise ValueError("la fecha fin no puede ser anterior a la fecha inicio")
+        if self.es_hito and self.fecha_inicio != self.fecha_fin:
+            raise ValueError("un hito dura 0 días: fecha inicio y fin deben ser iguales")
+        return self
 
 
 class Reto(BaseModel):

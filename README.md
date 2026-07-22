@@ -6,6 +6,13 @@ La fuente de verdad del diseño es [CLAUDE.md](CLAUDE.md).
 Responde siempre tres preguntas: **¿cómo va cada proyecto?** (semáforos + KPIs),
 **¿qué hago hoy y esta semana?** (plan Ivy Lee) y **¿qué retos ponen en riesgo los objetivos?**
 
+## Uso diario (un solo clic)
+
+Doble clic en **`arrancar.ps1`** (o un acceso directo a
+`powershell -ExecutionPolicy Bypass -File arrancar.ps1`): levanta un solo
+proceso en http://localhost:8000 que sirve la app compilada y la API.
+Requiere haber hecho la instalación inicial (abajo) y `npm run build` una vez.
+
 ## Correr en desarrollo
 
 ```powershell
@@ -18,11 +25,12 @@ python -m venv .venv          # solo la primera vez
 # Frontend (Vite, puerto 5173, proxy /api → 8000)
 cd frontend
 npm install                   # solo la primera vez
-npm run dev
+npm run dev                   # desarrollo con HMR
+npm run build                 # compila dist/ para el modo "un solo clic"
 ```
 
-Abre http://localhost:5173. Si no hay datos, el portafolio ofrece **sembrar datos
-de demostración**.
+Abre http://localhost:5173 (desarrollo) o http://localhost:8000 (compilada).
+Si no hay datos, el portafolio ofrece **sembrar datos de demostración**.
 
 ## Tests
 
@@ -44,7 +52,17 @@ cd backend
 - **Estado del frontend: fetch simple + estado local de React** (sin React
   Query/Zustand): una sola usuaria/o, datos chicos, recarga tras cada mutación.
 - **Seguridad mínima**: si defines `APP_PASSWORD` en el backend, la API exige el
-  header `X-Token`; guarda el valor en localStorage como `comando_pm_token`.
+  header `X-Token` (comparación de tiempo constante); guarda el valor en
+  localStorage como `comando_pm_token`. La SPA estática se sirve sin token.
+- **Persistencia blindada** (dictamen del consejo de revisión): escritura
+  atómica (tmp + `os.replace`), candado por petición (los endpoints corren en
+  threadpool), respaldo diario automático en `backend/datos/respaldos/`
+  (retiene 30), recuperación ante archivo corrupto (se aparta y se restaura el
+  último respaldo), y **botón "⬇ Respaldo"** en Portafolio que descarga todo
+  (`GET /api/export`).
+- **Errores visibles**: todo fallo de la API dispara un toast global; el plan
+  Ivy Lee se reordena con ▲/▼; los pendientes de ayer se arrastran al frente
+  de la sugerencia de hoy.
 
 ## Estado (las 4 fases del prompt maestro completas)
 
