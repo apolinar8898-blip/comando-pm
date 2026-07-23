@@ -20,6 +20,13 @@ if (-not (Test-Path $dist)) {
     exit 1
 }
 
+# Si ya está corriendo, solo abrir el navegador
+$activo = Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue
+if ($activo) {
+    Start-Process "http://localhost:8000"
+    exit 0
+}
+
 Write-Host "Arrancando Comando PM en http://localhost:8000 ..." -ForegroundColor Green
 Start-Process "http://localhost:8000"
 & $uvicorn app.main:app --app-dir (Join-Path $raiz "backend") --host 127.0.0.1 --port 8000
