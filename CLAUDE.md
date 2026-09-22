@@ -282,3 +282,15 @@ prueba local, despliegue y actualización de este documento)
 
 ### Variables de entorno (ver `.env.example`; nunca en código)
 `DATABASE_URL`, `APP_PASSWORD`, `ZONA_HORARIA` (opcional), `COMANDO_PM_DATOS` (opcional, solo JSON).
+
+### Estado de la Fase 0 (22/09/2026)
+Desplegada en **https://comando-pm-production.up.railway.app** (Railway, US West,
+deploy automático desde `main` de github.com/apolinar8898-blip/comando-pm).
+Supabase con migraciones 001–003; datos del JSON migrados y portafolio real cargado.
+Lecciones del despliegue:
+- Variable `PORT=8080` en Railway, igual al puerto del dominio público.
+- La URI de Supabase trae `?pgbouncer=true` (formato Prisma): `limpiar_dsn` lo quita.
+- Al pegar la contraseña en la URI NO dejar los corchetes de `[YOUR-PASSWORD]`.
+  Varios intentos fallidos activan `ECIRCUITBREAKER` en Supabase (bloqueo temporal);
+  por eso la app espera `ESPERA_REINTENTO_DB` (60 s) antes de caer si no conecta.
+- Cambios de variables en Railway quedan "en espera" hasta dar Deploy.
