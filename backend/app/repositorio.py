@@ -175,5 +175,23 @@ def crear_repositorio() -> Repositorio:
     dsn = os.environ.get("DATABASE_URL")
     if dsn:
         from .repositorio_supabase import RepositorioSupabase
-        return RepositorioSupabase(dsn)
+        return _con_espera(lambda: RepositorioSupabase(dsn))
     return Repositorio()
+
+
+def _con_espera(crear, dormir=None) -> Repositorio:
+    """Si la DB rechaza la conexión al arrancar, esperar antes de caer.
+
+    Sin esto Railway reinicia en ráfaga y, con una contraseña mala, Supabase
+    bloquea la cuenta (ECIRCUITBREAKER: too many authentication failures).
+    """
+    import time
+
+    try:
+        return crear()
+    except Exception as e:
+        espera = int(os.environ.get("ESPERA_REINTENTO_DB", "60"))
+        print(f"[comando-pm] No se pudo conectar a la base de datos: {type(e).__name__}. "
+              f"Revisa DATABASE_URL. Reintento tras {espera} s.")
+        (dormir or time.sleep)(espera)
+        raise

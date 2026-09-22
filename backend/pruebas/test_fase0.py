@@ -121,6 +121,19 @@ def test_plan_del_dia_se_encuentra_aunque_la_fecha_venga_de_postgres(tmp_path):
     assert repo.plan_de(MARTES).tarea_ids == ["a"]
 
 
+def test_fallo_de_conexion_espera_antes_de_caer():
+    from app.repositorio import _con_espera
+
+    esperas = []
+
+    def falla():
+        raise ConnectionError("contraseña mala")
+
+    with pytest.raises(ConnectionError):
+        _con_espera(falla, dormir=esperas.append)
+    assert esperas == [60]
+
+
 def test_dsn_sin_parametros_de_prisma():
     from app.repositorio_supabase import limpiar_dsn
 
