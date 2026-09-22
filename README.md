@@ -32,6 +32,18 @@ npm run build                 # compila dist/ para el modo "un solo clic"
 Abre http://localhost:5173 (desarrollo) o http://localhost:8000 (compilada).
 Si no hay datos, el portafolio ofrece **sembrar datos de demostración**.
 
+## Producción (Railway + Supabase)
+
+- Un solo servicio en Railway construido con el `Dockerfile` (compila la SPA y la
+  sirve desde FastAPI). Deploy automático al hacer `git push` a GitHub.
+- Variables en Railway → Service → Variables (plantilla en `.env.example`):
+  `DATABASE_URL` (Session pooler de Supabase) y `APP_PASSWORD`.
+- Base de datos: `schema.sql` para una DB nueva; `migraciones/NNN_*.sql` para
+  una existente (en orden, desde el SQL Editor de Supabase).
+- Scripts (desde `backend`, leen el `.env` de la raíz):
+  - `.venv\Scripts\python scripts\migrar_json_a_supabase.py`: copia el JSON local a Supabase.
+  - `.venv\Scripts\python scripts\fase0_proyectos_reales.py`: portafolio real (idempotente).
+
 ## Tests
 
 ```powershell
@@ -41,6 +53,9 @@ cd backend
 
 ## Decisiones registradas
 
+- **Persistencia en producción: Supabase** (`repositorio_supabase.py`, diff por
+  transacción) cuando existe `DATABASE_URL`; si no, archivo JSON. Ver CLAUDE.md §12.
+- **Rutinas**: trabajo recurrente que genera la tarea real de cada día (↻ en Hoy).
 - **Persistencia v1: archivo JSON** (`backend/datos/comando-pm.json`) mediante
   `repositorio.py`. `schema.sql` ya define el esquema completo para migrar a
   Supabase cambiando solo esa capa. Ruta configurable con `COMANDO_PM_DATOS`.

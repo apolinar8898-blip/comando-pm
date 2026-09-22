@@ -7,7 +7,7 @@ function anunciar(mensaje: string) {
 }
 
 async function pedir<T>(ruta: string, opciones: RequestInit = {}): Promise<T> {
-  const token = localStorage.getItem("comando_pm_token");
+  const token = localStorage.getItem(CLAVE_TOKEN);
   let respuesta: Response;
   try {
     respuesta = await fetch(ruta, {
@@ -22,6 +22,11 @@ async function pedir<T>(ruta: string, opciones: RequestInit = {}): Promise<T> {
     anunciar("Sin conexión con el servidor. ¿El backend está corriendo?");
     throw new Error("Sin conexión con el servidor");
   }
+  if (respuesta.status === 401) {
+    // Sin token o token viejo: App.tsx muestra la pantalla de contraseña.
+    window.dispatchEvent(new CustomEvent("auth-requerida"));
+    throw new Error("Se requiere contraseña");
+  }
   if (!respuesta.ok) {
     const cuerpo = await respuesta.json().catch(() => ({}));
     const mensaje = cuerpo.detail ?? `Error ${respuesta.status}`;
@@ -30,6 +35,8 @@ async function pedir<T>(ruta: string, opciones: RequestInit = {}): Promise<T> {
   }
   return respuesta.json();
 }
+
+export const CLAVE_TOKEN = "comando_pm_token";
 
 export const api = {
   get: <T>(ruta: string) => pedir<T>(ruta),

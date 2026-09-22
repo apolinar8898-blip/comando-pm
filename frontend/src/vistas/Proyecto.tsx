@@ -8,10 +8,11 @@ import Documentos from "../componentes/Documentos";
 import Gantt from "../componentes/Gantt";
 import GraficaAvance from "../componentes/GraficaAvance";
 import Retos from "../componentes/Retos";
+import Rutinas from "../componentes/Rutinas";
 import Eisenhower from "./Eisenhower";
 import Semana from "./Semana";
 
-type Pestana = "dashboard" | "gantt" | "semana" | "eisenhower" | "tareas" | "retos" | "docs";
+type Pestana = "dashboard" | "gantt" | "semana" | "eisenhower" | "tareas" | "rutinas" | "retos" | "docs";
 
 export default function Proyecto() {
   const { id } = useParams<{ id: string }>();
@@ -43,7 +44,7 @@ export default function Proyecto() {
       </div>
     );
   if (!detalle) return <p className="text-sm text-[var(--tinta-suave)]">Cargando…</p>;
-  const { proyecto, kpis, tareas, retos, objetivos, snapshots, ruta_critica } = detalle;
+  const { proyecto, kpis, tareas, retos, objetivos, snapshots, ruta_critica, rutinas } = detalle;
 
   async function moverTarea(tid: string, fecha_inicio: string, fecha_fin: string) {
     await api.patch(`/api/tareas/${tid}`, { fecha_inicio, fecha_fin });
@@ -64,8 +65,8 @@ export default function Proyecto() {
           </h1>
           {proyecto.descripcion && <p className="text-sm text-[var(--tinta-2)]">{proyecto.descripcion}</p>}
         </div>
-        <nav className="flex gap-1 rounded-lg border border-[var(--borde)] bg-[var(--superficie)] p-1">
-          {(["dashboard", "gantt", "semana", "eisenhower", "tareas", "retos", "docs"] as Pestana[]).map((p) => (
+        <nav className="flex max-w-full gap-1 overflow-x-auto rounded-lg border border-[var(--borde)] bg-[var(--superficie)] p-1">
+          {(["dashboard", "gantt", "semana", "eisenhower", "tareas", "rutinas", "retos", "docs"] as Pestana[]).map((p) => (
             <button
               key={p}
               onClick={() => setPestana(p)}
@@ -136,7 +137,8 @@ export default function Proyecto() {
         </div>
       )}
 
-      {pestana === "gantt" && <Gantt tareas={tareas} rutaCritica={ruta_critica} onMover={moverTarea} />}
+      {pestana === "rutinas" && <Rutinas proyectoId={proyecto.id} rutinas={rutinas} onCambio={cargar} />}
+      {pestana === "gantt" && <Gantt tareas={tareas.filter((t) => !t.rutina_id)} rutaCritica={ruta_critica} onMover={moverTarea} />}
 
       {pestana === "semana" && <Semana proyectoId={proyecto.id} />}
 

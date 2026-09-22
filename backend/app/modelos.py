@@ -75,6 +75,7 @@ class Tarea(BaseModel):
     esfuerzo_estimado_h: float = 1
     esfuerzo_real_h: Optional[float] = None
     origen_rca: Optional[str] = None
+    rutina_id: Optional[str] = None  # instancia diaria generada por una rutina
 
     @model_validator(mode="after")
     def _fechas_coherentes(self):
@@ -105,6 +106,46 @@ class Documento(BaseModel):
     contenido: dict = Field(default_factory=dict)
     historial: list[dict] = Field(default_factory=list)  # [{version, contenido, fecha}]
     creado_en: datetime = Field(default_factory=datetime.now)
+
+
+class Rutina(BaseModel):
+    """Trabajo recurrente (entreno, prospección, post diario).
+
+    No se pre-crean cientos de tareas: cada día que toca, el dominio genera
+    UNA tarea real para ese día (rutina_id) y avanza generada_hasta.
+    """
+
+    id: str = Field(default_factory=_nuevo_id)
+    proyecto_id: str
+    titulo: str
+    dias_semana: list[int]  # 0 = lunes … 6 = domingo
+    importante: bool = True
+    esfuerzo_estimado_h: float = 1
+    desde: date
+    hasta: Optional[date] = None
+    activa: bool = True
+    generada_hasta: Optional[date] = None  # último día ya materializado
+
+    @field_validator("titulo")
+    @classmethod
+    def _titulo(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("la rutina necesita título")
+        return v.strip()
+
+    @field_validator("dias_semana")
+    @classmethod
+    def _dias(cls, v: list[int]) -> list[int]:
+        dias = sorted(set(v))
+        if not dias or any(d < 0 or d > 6 for d in dias):
+            raise ValueError("días de la semana: al menos uno, de 0 (lunes) a 6 (domingo)")
+        return dias
+
+    @model_validator(mode="after")
+    def _rango(self):
+        if self.hasta is not None and self.hasta < self.desde:
+            raise ValueError("la rutina no puede terminar antes de empezar")
+        return self
 
 
 class PlanDia(BaseModel):

@@ -14,6 +14,7 @@ from .reglas import (
 )
 from .ivy_lee import MAX_TAREAS_DIA, sugerir_plan_dia, validar_plan
 from .gantt import ruta_critica
+from .rutinas import fechas_a_generar, instancia, rutina_expirada
 
 __all__ = [
     "avance",
@@ -28,4 +29,7 @@ __all__ = [
     "sugerir_plan_dia",
     "validar_plan",
     "ruta_critica",
+    "fechas_a_generar",
+    "instancia",
+    "rutina_expirada",
 ]

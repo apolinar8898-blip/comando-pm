@@ -215,3 +215,70 @@ Mapa mental que guía el diseño — no crear módulos por área de conocimiento
 **Las 4 fases del §8 están completas.** Siguientes pasos naturales (no
 comprometidos): export JSON de respaldo, migración del repositorio a
 Supabase, despliegue (Vercel + Railway) y protección con APP_PASSWORD.
+
+---
+
+## 12. Centro de mando personal y profesional (desde 22/09/2026)
+
+Comando PM deja de ser un demo PMBOK y se vuelve el centro de mando de Apo
+Ramírez Villalón (Querétaro). **Todo lo que se construya debe ayudar a cerrar
+clientes SINPROTEK, cerrar operaciones REMAX o cumplir el plan de IRONMAN.**
+Unidades SI, formato 24 h, MXN, interfaz en español.
+
+### Frentes y metas
+- **SINPROTEK / PropIA** (agentes de IA por WhatsApp y voz "Alex"). **Meta que
+  gobierna todo: 3 clientes pagando antes del 31/12/2026.** Clúster: CANACINTRA
+  Querétaro. Precios: PyME $4,000 + $4,000/mes; independiente $3,000 + $3,500/mes.
+- **REMAX Infinity**: 1 captación, 1 venta y 1 renta por mes. Comisión: 50 %
+  REMAX, 25 % captador, 25 % quien trae comprador.
+- **IRONMAN 70.3 Campeche, 08/11/2026.** Peso objetivo el día de la carrera: 86 kg.
+- **Apo Villalón** (marca personal LinkedIn/YouTube que alimenta SINPROTEK).
+- Uber (ingreso actual; SAT mensual el día 17).
+- Zenzontle: **cancelado** el 22/09/2026 (queda en historial).
+
+### Fases del centro de mando (una a la vez; cada una cierra con tests en verde,
+prueba local, despliegue y actualización de este documento)
+- **Fase 0 — Limpieza y despliegue** ✅ código listo (ver abajo).
+- **Fase 1 — Captación SINPROTEK** (CRM de prospectos, kanban, KPIs en
+  `dominio/captacion.py`, endpoint para Alex/VAPI). Al cerrarla: recordar a Apo
+  registrar **5 días seguidos de Ivy Lee antes de empezar la Fase 2**.
+- **Fase 2 — Dashboard REMAX** (propiedades, operaciones, embudo SVG).
+- **Fase 3 — Integraciones** (Google Calendar, Strava, Drive). Notion NO.
+- **Fase 4 — Ingresos y obligaciones** (ingresos por fuente, recordatorio SAT).
+
+### Decisiones de la Fase 0
+- **Rutinas** (`dominio/rutinas.py`, tabla `rutinas`): el trabajo recurrente
+  (entrenos, prospección diaria, post diario) NO se pre-crea como cientos de
+  tareas. Cada día que toca, la API materializa UNA tarea real (`rutina_id`)
+  al primer acceso (`_materializar_rutinas`), también los días en que no se
+  abrió la app (máx. 31 hacia atrás, nunca a futuro). Una instancia de un día
+  pasado sin hacer **expira**: no cuenta como vencida ni se sugiere en Ivy Lee,
+  pero sí pesa en el SPI (el SPI mide la adherencia al plan). Nada se borra:
+  una rutina se pausa (`activa = false`). El Gantt no muestra instancias de rutina.
+- **"Hoy" es el de Querétaro** (`app/reloj.py`, `ZONA_HORARIA`, por defecto
+  America/Mexico_City). Railway corre en UTC; `date.today()` está prohibido en la API.
+- **Persistencia en producción: Supabase** con `RepositorioSupabase`
+  (`repositorio_supabase.py`, psycopg 3 directo, no PostgREST). Carga todo a
+  memoria al arrancar; cada `guardar()` escribe solo el diff en UNA transacción
+  (si falla, el siguiente guardar reintenta). `crear_repositorio()` elige
+  Supabase si existe `DATABASE_URL`; si no, el JSON de siempre (tests y respaldo).
+  `DATABASE_URL` = **Session pooler** de Supabase (la conexión directa es solo IPv6).
+- **RLS activado sin políticas** en todas las tablas: cierra la API pública de
+  Supabase; el backend entra como `postgres` y no le afecta.
+- **Migraciones numeradas** en `migraciones/` (tabla `migraciones` registra las
+  aplicadas). `schema.sql` = estado completo acumulado para una DB nueva.
+- **Despliegue: Railway, un solo servicio** con `Dockerfile` de dos etapas (Node
+  compila la SPA → Python la sirve con uvicorn en `$PORT`). Healthcheck público
+  `GET /api/ping` (sin datos). Deploy automático desde GitHub.
+- **Login**: si la API responde 401, la SPA muestra la pantalla de contraseña
+  (`APP_PASSWORD`) y guarda el token en localStorage (`comando_pm_token`).
+- **Vista Hoy móvil primero** (380 px): tareas a 16 px con título completo (sin
+  truncar), checkbox de 28 px con toda la fila como blanco táctil, botones de
+  ≥ 44 px, semáforos en 2 columnas (solo icono en celular), sin scroll lateral.
+- **Portafolio real** cargado por `app/semilla_real.py` (idempotente, con test):
+  demos CTWA y CRM → `cerrado`; Zenzontle → `cancelado`; SINPROTEK, REMAX,
+  IRONMAN y Apo Villalón con objetivos SMART, hitos y rutinas. En días hábiles
+  4 de los 6 lugares de Ivy Lee son rutinas: es la realidad del plan, no se esconde.
+
+### Variables de entorno (ver `.env.example`; nunca en código)
+`DATABASE_URL`, `APP_PASSWORD`, `ZONA_HORARIA` (opcional), `COMANDO_PM_DATOS` (opcional, solo JSON).

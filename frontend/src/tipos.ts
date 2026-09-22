@@ -43,6 +43,8 @@ export interface Tarea {
   dependencias: string[];
   esfuerzo_estimado_h: number;
   origen_rca?: string | null;
+  rutina_id?: string | null;
+  expirada?: boolean; // instancia de rutina de un día pasado sin hacer
   cuadrante: 1 | 2 | 3 | 4;
   proyecto_nombre: string;
   proyecto_color: string;
@@ -100,6 +102,18 @@ export interface Hoy {
   retos_arden: Reto[];
 }
 
+export interface Rutina {
+  id: string;
+  proyecto_id: string;
+  titulo: string;
+  dias_semana: number[]; // 0 = lunes … 6 = domingo
+  importante: boolean;
+  esfuerzo_estimado_h: number;
+  desde: string;
+  hasta: string | null;
+  activa: boolean;
+}
+
 export interface DetalleProyecto {
   proyecto: Proyecto;
   kpis: Kpis;
@@ -108,4 +122,5 @@ export interface DetalleProyecto {
   retos: Reto[];
   objetivos: Objetivo[];
   snapshots: Snapshot[];
+  rutinas: Rutina[];
 }

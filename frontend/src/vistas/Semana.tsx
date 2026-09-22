@@ -44,7 +44,7 @@ export default function Semana({ proyectoId }: { proyectoId?: string }) {
     const f = new Date(lunes.getTime() + i * DIA_MS);
     return { iso: aIso(f), nombre: NOMBRES[i], numero: f.getDate() };
   });
-  const vencidas = tareas.filter((t) => t.estado !== "hecha" && t.fecha_fin < hoyIso);
+  const vencidas = tareas.filter((t) => t.estado !== "hecha" && t.fecha_fin < hoyIso && !t.expirada);
 
   async function reprogramar(id: string, destinoIso: string) {
     setSeleccion(null);

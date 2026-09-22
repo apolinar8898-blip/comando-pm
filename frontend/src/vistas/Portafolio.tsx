@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api } from "../api";
+import { api, CLAVE_TOKEN } from "../api";
 import type { Proyecto } from "../tipos";
 import Semaforo from "../componentes/Semaforo";
 import { fechaCorta } from "../componentes/Chips";
@@ -38,7 +38,7 @@ export default function Portafolio() {
 
   async function exportarRespaldo() {
     // fetch directo (no api.get) para poder descargar el blob con su nombre
-    const token = localStorage.getItem("comando_pm_token");
+    const token = localStorage.getItem(CLAVE_TOKEN);
     const r = await fetch("/api/export", { headers: token ? { "X-Token": token } : {} });
     if (!r.ok) {
       window.dispatchEvent(new CustomEvent("api-error", { detail: "No se pudo exportar el respaldo" }));

@@ -9,6 +9,7 @@ from datetime import date, timedelta
 from typing import Optional
 
 from ..modelos import Reto, Salud, Tarea
+from .rutinas import rutina_expirada
 
 # Umbrales de la regla de salud (una sola fuente de verdad)
 SPI_ROJO = 0.8
@@ -90,7 +91,12 @@ def spi(tareas: list[Tarea], hoy: date) -> float:
 # ---------- Vencimientos e hitos ----------
 
 def tareas_vencidas(tareas: list[Tarea], hoy: date) -> list[Tarea]:
-    return [t for t in tareas if t.estado != "hecha" and t.fecha_fin < hoy]
+    """Pendientes con fecha pasada. Las instancias de rutina expiradas no
+    cuentan (un entreno de ayer no se recupera): su falta ya pesa en el SPI."""
+    return [
+        t for t in tareas
+        if t.estado != "hecha" and t.fecha_fin < hoy and not rutina_expirada(t, hoy)
+    ]
 
 
 def hitos_vencidos(tareas: list[Tarea], hoy: date) -> list[Tarea]:

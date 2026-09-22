@@ -23,7 +23,7 @@ export default function Eisenhower({ proyectoId }: { proyectoId?: string }) {
     const r = await api.get<{ tareas: Tarea[] }>(
       `/api/tareas${proyectoId ? `?proyecto_id=${proyectoId}` : ""}`,
     );
-    setTareas(r.tareas.filter((t) => t.estado === "pendiente" || t.estado === "en_curso"));
+    setTareas(r.tareas.filter((t) => (t.estado === "pendiente" || t.estado === "en_curso") && !t.expirada));
   }, [proyectoId]);
 
   useEffect(() => {

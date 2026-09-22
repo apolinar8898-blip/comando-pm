@@ -1,8 +1,6 @@
 -- =============================================================
 -- Comando PM — esquema de base de datos (Supabase / Postgres)
--- Fuente de verdad de la DB: estado COMPLETO actual (001 + 002 + 003…).
--- Para una DB nueva corre este archivo; para una existente, solo las
--- migraciones pendientes de migraciones/ (tabla "migraciones" dice cuáles).
+-- Fuente de verdad de la DB. Migración inicial: 001
 -- =============================================================
 
 -- ---------- Enums ----------
@@ -68,26 +66,6 @@ create table tareas (
     check (not es_hito or fecha_inicio = fecha_fin) -- un hito dura 0 días
 );
 
--- ---------- Rutinas (trabajo recurrente → una tarea real por día) ----------
-create table rutinas (
-    id                  uuid primary key default gen_random_uuid(),
-    proyecto_id         uuid not null references proyectos(id) on delete cascade,
-    titulo              text not null,
-    dias_semana         int[] not null,            -- 0 = lunes … 6 = domingo
-    importante          boolean not null default true,
-    esfuerzo_estimado_h numeric not null default 1,
-    desde               date not null,
-    hasta               date,
-    activa              boolean not null default true,
-    generada_hasta      date,                      -- último día ya materializado
-    creado_en           timestamptz not null default now(),
-    check (cardinality(dias_semana) >= 1 and dias_semana <@ array[0,1,2,3,4,5,6]),
-    check (hasta is null or hasta >= desde)
-);
-
-alter table tareas add column rutina_id uuid references rutinas(id) on delete set null;
-create index idx_tareas_rutina on tareas (rutina_id, fecha_fin);
-
 create index idx_tareas_proyecto on tareas (proyecto_id, estado);
 create index idx_tareas_fechas   on tareas (fecha_fin) where estado <> 'hecha';
 
@@ -114,7 +92,6 @@ create table documentos (
     tipo        tipo_documento not null,
     version     int not null default 1,
     contenido   jsonb not null default '{}',
-    historial   jsonb not null default '[]',  -- [{version, contenido, fecha}]
     creado_en   timestamptz not null default now()
 );
 
@@ -155,24 +132,3 @@ create trigger trg_tareas_act before update on tareas
     for each row execute function marcar_actualizado();
 create trigger trg_retos_act before update on retos
     for each row execute function marcar_actualizado();
-
--- ---------- Seguridad: cerrar la API pública de Supabase (PostgREST) ----------
--- El backend entra como 'postgres' (no le afecta RLS); la llave anon no lee nada.
-alter table proyectos     enable row level security;
-alter table objetivos     enable row level security;
-alter table tareas        enable row level security;
-alter table retos         enable row level security;
-alter table documentos    enable row level security;
-alter table planes_dia    enable row level security;
-alter table kpi_snapshots enable row level security;
-alter table rutinas       enable row level security;
-
--- ---------- Registro de migraciones aplicadas ----------
-create table migraciones (
-    numero   int primary key,
-    nombre   text not null,
-    aplicada timestamptz not null default now()
-);
-alter table migraciones enable row level security;
-insert into migraciones (numero, nombre) values
-    (1, 'schema inicial'), (2, 'fase0: historial documentos + RLS'), (3, 'rutinas');

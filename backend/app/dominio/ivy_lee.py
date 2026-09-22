@@ -8,6 +8,7 @@ from datetime import date, timedelta
 
 from ..modelos import Tarea
 from .reglas import cuadrante_eisenhower
+from .rutinas import rutina_expirada
 
 MAX_TAREAS_DIA = 6
 DIAS_RADAR_HITOS = 7  # hitos que vencen en ≤ 7 días entran primero al plan
@@ -17,10 +18,14 @@ def sugerir_plan_dia(tareas: list[Tarea], hoy: date) -> list[str]:
     """Propone las 6 tareas del día a partir de las pendientes.
 
     Prioridad: hitos próximos (≤7 días) → cuadrante I → cuadrante II,
-    cada grupo ordenado por fecha de vencimiento. Excluye bloqueadas y hechas.
+    cada grupo ordenado por fecha de vencimiento. Excluye bloqueadas, hechas
+    y rutinas expiradas (el entreno de ayer no se hace hoy).
     Devuelve ids en orden (el usuario luego reordena/reemplaza y confirma).
     """
-    candidatas = [t for t in tareas if t.estado in ("pendiente", "en_curso")]
+    candidatas = [
+        t for t in tareas
+        if t.estado in ("pendiente", "en_curso") and not rutina_expirada(t, hoy)
+    ]
 
     hitos = sorted(
         (t for t in candidatas

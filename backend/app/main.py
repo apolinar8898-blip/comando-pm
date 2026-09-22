@@ -22,16 +22,20 @@ from . import datos_demo
 from .dominio import (
     avance,
     cuadrante_eisenhower,
+    fechas_a_generar,
+    instancia,
     proximo_hito,
     ruta_critica,
+    rutina_expirada,
     salud_proyecto,
     spi,
     sugerir_plan_dia,
     tareas_vencidas,
     validar_plan,
 )
-from .modelos import Documento, KpiSnapshot, Objetivo, PlanDia, Proyecto, Reto, Tarea
-from .repositorio import Repositorio
+from .modelos import Documento, KpiSnapshot, Objetivo, PlanDia, Proyecto, Reto, Rutina, Tarea
+from .reloj import hoy_local
+from .repositorio import Repositorio, crear_repositorio
 
 
 # ---------- Seguridad mínima (un solo usuario) ----------
@@ -70,7 +74,7 @@ class CuerpoCierre(BaseModel):
 # ---------- Fábrica de la app (inyectable para tests) ----------
 
 def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
-    repo = repo or Repositorio()
+    repo = repo if repo is not None else crear_repositorio()
     app = FastAPI(title="Comando PM")
     # El token y el candado gatean SOLO la API; la SPA estática se sirve libre.
     api = APIRouter(dependencies=[Depends(_verificar_token), Depends(_candado)])
@@ -100,6 +104,28 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
             "dias_para_fin": (proyecto.fecha_fin_objetivo - hoy).days,
         }
 
+    def _materializar_rutinas(hoy: date) -> None:
+        """Cada rutina de proyecto activo genera la tarea real de sus días (≤ hoy)."""
+        activos = {p.id for p in repo.proyectos_activos()}
+        cambio = False
+        for rutina in repo.rutinas.values():
+            if rutina.proyecto_id not in activos:
+                continue
+            fechas = fechas_a_generar(rutina, hoy)
+            for fecha in fechas:
+                tarea = instancia(rutina, fecha)
+                repo.tareas[tarea.id] = tarea
+            if fechas:
+                rutina.generada_hasta = fechas[-1]
+                cambio = True
+        if cambio:
+            repo.guardar()
+
+    def _al_dia(hoy: date) -> None:
+        """Rutinas primero (sus tareas cuentan en los KPIs), luego la foto del día."""
+        _materializar_rutinas(hoy)
+        _asegurar_snapshots(hoy)
+
     def _asegurar_snapshots(hoy: date) -> None:
         """Foto diaria de KPIs por proyecto activo (para gráficas de tendencia)."""
         cambio = False
@@ -122,6 +148,7 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
         return {
             **tarea.model_dump(mode="json"),
             "cuadrante": cuadrante_eisenhower(tarea, hoy),
+            "expirada": rutina_expirada(tarea, hoy),
             "proyecto_nombre": proyecto.nombre if proyecto else "?",
             "proyecto_color": proyecto.color if proyecto else "#888",
         }
@@ -162,8 +189,8 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
 
     @api.get("/api/portafolio")
     def portafolio():
-        hoy = date.today()
-        _asegurar_snapshots(hoy)
+        hoy = hoy_local()
+        _al_dia(hoy)
         return {
             "proyectos": [
                 {**p.model_dump(mode="json"), "kpis": _kpis(p, hoy)}
@@ -183,8 +210,9 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
 
     @api.get("/api/proyectos/{pid}")
     def detalle_proyecto(pid: str):
-        hoy = date.today()
+        hoy = hoy_local()
         proyecto = _obtener(repo.proyectos, pid, "Proyecto")
+        _materializar_rutinas(hoy)
         tareas = sorted(repo.tareas_de(pid), key=lambda t: (t.fecha_inicio, t.fecha_fin))
         return {
             "proyecto": proyecto.model_dump(mode="json"),
@@ -194,6 +222,7 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
             "retos": [r.model_dump(mode="json") for r in repo.retos_de(pid)],
             "objetivos": [o.model_dump(mode="json") for o in repo.objetivos_de(pid)],
             "snapshots": [s.model_dump(mode="json") for s in repo.snapshots_de(pid)],
+            "rutinas": [r.model_dump(mode="json") for r in repo.rutinas.values() if r.proyecto_id == pid],
         }
 
     @api.patch("/api/proyectos/{pid}")
@@ -211,7 +240,8 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
 
         Sin filtro: todas las de proyectos activos. Con proyecto_id: solo las suyas.
         """
-        hoy = date.today()
+        hoy = hoy_local()
+        _materializar_rutinas(hoy)
         if proyecto_id:
             _obtener(repo.proyectos, proyecto_id, "Proyecto")
             tareas = repo.tareas_de(proyecto_id)
@@ -226,14 +256,14 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
         tarea = _validar(Tarea, {**datos, "proyecto_id": pid})
         repo.tareas[tarea.id] = tarea
         repo.guardar()
-        return _tarea_expandida(tarea, date.today())
+        return _tarea_expandida(tarea, hoy_local())
 
     @api.patch("/api/tareas/{tid}")
     def editar_tarea(tid: str, cambios: dict):
         tarea = _obtener(repo.tareas, tid, "Tarea")
         repo.tareas[tid] = _aplicar_cambios(tarea, cambios)
         repo.guardar()
-        return _tarea_expandida(repo.tareas[tid], date.today())
+        return _tarea_expandida(repo.tareas[tid], hoy_local())
 
     @api.delete("/api/tareas/{tid}")
     def borrar_tarea(tid: str):
@@ -263,8 +293,8 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
 
     @api.get("/api/hoy")
     def hoy_():
-        hoy = date.today()
-        _asegurar_snapshots(hoy)
+        hoy = hoy_local()
+        _al_dia(hoy)
         plan = repo.plan_de(hoy)
         if plan is None:
             # Ivy Lee puro (§4.1): lo pendiente del último plan se arrastra al
@@ -273,6 +303,7 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
             arrastradas = [
                 tid for tid in (ayer.tarea_ids if ayer else [])
                 if tid in repo.tareas and repo.tareas[tid].estado != "hecha"
+                and not rutina_expirada(repo.tareas[tid], hoy)
             ]
             sugeridas = sugerir_plan_dia(repo.tareas_de_activos(), hoy)
             ids = (arrastradas + [t for t in sugeridas if t not in arrastradas])[:6]
@@ -288,6 +319,7 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
             _tarea_expandida(t, hoy)
             for t in sorted(repo.tareas_de_activos(), key=lambda t: t.fecha_fin)
             if t.estado in ("pendiente", "en_curso") and t.id not in plan.tarea_ids
+            and not rutina_expirada(t, hoy)
         ]
         retos_abiertos = [
             {**r.model_dump(mode="json"),
@@ -309,7 +341,7 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
 
     @api.put("/api/hoy")
     def poner_plan_hoy(cuerpo: CuerpoPlan):
-        hoy = date.today()
+        hoy = hoy_local()
         try:
             ids = validar_plan(cuerpo.tarea_ids)
         except ValueError as e:
@@ -325,7 +357,7 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
 
     @api.post("/api/hoy/cerrar")
     def cerrar_dia(cuerpo: CuerpoCierre):
-        hoy = date.today()
+        hoy = hoy_local()
         plan = repo.plan_de(hoy)
         if plan is None:
             raise HTTPException(status_code=404, detail="Hoy no tiene plan que cerrar")
@@ -336,6 +368,25 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
         pendientes = [tid for tid in plan.tarea_ids
                       if tid in repo.tareas and repo.tareas[tid].estado != "hecha"]
         return {"ok": True, "pendientes": len(pendientes)}
+
+    # ----- Rutinas (trabajo recurrente) -----
+
+    @api.post("/api/proyectos/{pid}/rutinas")
+    def crear_rutina(pid: str, datos: dict):
+        _obtener(repo.proyectos, pid, "Proyecto")
+        rutina = _validar(Rutina, {"desde": hoy_local().isoformat(), **datos, "proyecto_id": pid})
+        repo.rutinas[rutina.id] = rutina
+        repo.guardar()
+        return rutina.model_dump(mode="json")
+
+    @api.patch("/api/rutinas/{rid}")
+    def editar_rutina(rid: str, cambios: dict):
+        """Nada se borra: una rutina que ya no aplica se desactiva (activa=false)."""
+        rutina = _obtener(repo.rutinas, rid, "Rutina")
+        cambios = {k: v for k, v in cambios.items() if k != "generada_hasta"}
+        repo.rutinas[rid] = _aplicar_cambios(rutina, cambios)
+        repo.guardar()
+        return repo.rutinas[rid].model_dump(mode="json")
 
     # ----- Objetivos SMART -----
 
@@ -388,7 +439,7 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
         doc.historial.append({
             "version": doc.version,
             "contenido": doc.contenido,
-            "fecha": date.today().isoformat(),
+            "fecha": hoy_local().isoformat(),
         })
         doc.contenido = datos.get("contenido", {})
         doc.version += 1
@@ -493,7 +544,7 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
 
     @api.get("/api/export")
     def exportar():
-        nombre = f"comando-pm-export-{date.today().isoformat()}.json"
+        nombre = f"comando-pm-export-{hoy_local().isoformat()}.json"
         return JSONResponse(
             repo.volcado(),
             headers={"Content-Disposition": f'attachment; filename="{nombre}"'},
@@ -509,6 +560,11 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
         return {"ok": True, "proyectos": len(repo.proyectos)}
 
     app.include_router(api)
+
+    @app.get("/api/ping", include_in_schema=False)
+    def ping():
+        """Público y sin datos: para el healthcheck de Railway."""
+        return {"ok": True}
 
     # ----- SPA compilada (arranque de un solo proceso) -----
     # Si existe frontend/dist (npm run build), FastAPI la sirve en / y la app

@@ -7,7 +7,8 @@ const ESTILOS: Record<Salud, { color: string; icono: string; texto: string }> = 
   rojo: { color: "var(--critico)", icono: "■", texto: "Crítico" },
 };
 
-export default function Semaforo({ salud }: { salud: Salud }) {
+// compacto: en celular solo el icono (el texto queda para lectores de pantalla).
+export default function Semaforo({ salud, compacto = false }: { salud: Salud; compacto?: boolean }) {
   const e = ESTILOS[salud];
   return (
     <span
@@ -15,7 +16,7 @@ export default function Semaforo({ salud }: { salud: Salud }) {
       style={{ color: e.color }}
     >
       <span aria-hidden>{e.icono}</span>
-      <span className="text-[var(--tinta-2)]">{e.texto}</span>
+      <span className={compacto ? "sr-only lg:not-sr-only lg:text-[var(--tinta-2)]" : "text-[var(--tinta-2)]"}>{e.texto}</span>
     </span>
   );
 }

@@ -1,8 +1,10 @@
 """Repositorio de Comando PM.
 
-v1: almacén en memoria con persistencia a archivo JSON (datos/comando-pm.json).
-Suficiente y confiable para una herramienta personal; la migración a Supabase
-(schema.sql ya está listo) es un cambio solo de esta capa.
+Almacén en memoria (dicts de modelos Pydantic) con dos persistencias:
+- Repositorio (este archivo, JSON en datos/comando-pm.json): tests, desarrollo
+  local y respaldo.
+- RepositorioSupabase (repositorio_supabase.py): producción. Se elige con
+  crear_repositorio() según exista DATABASE_URL.
 
 Blindaje de la persistencia (dictamen del consejo):
 - Escritura atómica: tmp + os.replace, nunca truncar el archivo en el lugar.
@@ -26,6 +28,7 @@ from .modelos import (
     PlanDia,
     Proyecto,
     Reto,
+    Rutina,
     Tarea,
 )
 
@@ -37,6 +40,10 @@ class Repositorio:
         self.ruta = ruta if ruta is not None else Path(
             os.environ.get("COMANDO_PM_DATOS", RUTA_DEFECTO)
         )
+        self._colecciones_vacias()
+        self._cargar()
+
+    def _colecciones_vacias(self) -> None:
         self.proyectos: dict[str, Proyecto] = {}
         self.tareas: dict[str, Tarea] = {}
         self.retos: dict[str, Reto] = {}
@@ -44,7 +51,7 @@ class Repositorio:
         self.documentos: dict[str, Documento] = {}
         self.planes_dia: dict[str, PlanDia] = {}  # clave: fecha ISO
         self.snapshots: list[KpiSnapshot] = []
-        self._cargar()
+        self.rutinas: dict[str, Rutina] = {}
 
     # ---------- Persistencia ----------
 
@@ -60,6 +67,7 @@ class Repositorio:
         self.documentos = {d["id"]: Documento.model_validate(d) for d in crudo.get("documentos", [])}
         self.planes_dia = {d["fecha"]: PlanDia.model_validate(d) for d in crudo.get("planes_dia", [])}
         self.snapshots = [KpiSnapshot.model_validate(d) for d in crudo.get("snapshots", [])]
+        self.rutinas = {d["id"]: Rutina.model_validate(d) for d in crudo.get("rutinas", [])}
 
     def _cargar(self) -> None:
         if not self.ruta.exists():
@@ -96,6 +104,7 @@ class Repositorio:
             "documentos": [d.model_dump(mode="json") for d in self.documentos.values()],
             "planes_dia": [p.model_dump(mode="json") for p in self.planes_dia.values()],
             "snapshots": [s.model_dump(mode="json") for s in self.snapshots],
+            "rutinas": [r.model_dump(mode="json") for r in self.rutinas.values()],
         }
 
     def _respaldo_diario(self) -> None:
@@ -153,3 +162,16 @@ class Repositorio:
 
     def vacio(self) -> bool:
         return not self.proyectos
+
+    def proyecto_por_nombre(self, nombre: str) -> Optional[Proyecto]:
+        clave = nombre.strip().lower()
+        return next((p for p in self.proyectos.values() if p.nombre.strip().lower() == clave), None)
+
+
+def crear_repositorio() -> Repositorio:
+    """Supabase si hay DATABASE_URL (producción); si no, archivo JSON."""
+    dsn = os.environ.get("DATABASE_URL")
+    if dsn:
+        from .repositorio_supabase import RepositorioSupabase
+        return RepositorioSupabase(dsn)
+    return Repositorio()
