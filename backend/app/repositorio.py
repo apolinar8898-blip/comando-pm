@@ -65,7 +65,9 @@ class Repositorio:
         self.retos = {d["id"]: Reto.model_validate(d) for d in crudo.get("retos", [])}
         self.objetivos = {d["id"]: Objetivo.model_validate(d) for d in crudo.get("objetivos", [])}
         self.documentos = {d["id"]: Documento.model_validate(d) for d in crudo.get("documentos", [])}
-        self.planes_dia = {d["fecha"]: PlanDia.model_validate(d) for d in crudo.get("planes_dia", [])}
+        # Clave ISO siempre, venga de JSON (texto) o de Postgres (date).
+        planes = (PlanDia.model_validate(d) for d in crudo.get("planes_dia", []))
+        self.planes_dia = {p.fecha.isoformat(): p for p in planes}
         self.snapshots = [KpiSnapshot.model_validate(d) for d in crudo.get("snapshots", [])]
         self.rutinas = {d["id"]: Rutina.model_validate(d) for d in crudo.get("rutinas", [])}
 

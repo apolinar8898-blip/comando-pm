@@ -114,6 +114,22 @@ def test_valores_a_texto_para_postgres():
     assert a_texto(3.5, "numeric") == "3.5"
 
 
+def test_plan_del_dia_se_encuentra_aunque_la_fecha_venga_de_postgres(tmp_path):
+    # Postgres devuelve date, JSON devuelve texto: el plan debe encontrarse igual.
+    repo = Repositorio(ruta=tmp_path / "d.json")
+    repo._poblar({"planes_dia": [{"fecha": MARTES, "tarea_ids": ["a"]}]})
+    assert repo.plan_de(MARTES).tarea_ids == ["a"]
+
+
+def test_dsn_sin_parametros_de_prisma():
+    from app.repositorio_supabase import limpiar_dsn
+
+    dsn = "postgresql://postgres.abc:p%40ss@aws-0-us-west-2.pooler.supabase.com:6543/postgres"
+    assert limpiar_dsn(dsn + "?pgbouncer=true") == dsn
+    assert limpiar_dsn(f'"{dsn}?pgbouncer=true&sslmode=require"') == dsn + "?sslmode=require"
+    assert limpiar_dsn(dsn) == dsn
+
+
 class ConexionFalsa:
     """Imita lo mínimo de psycopg: registra el SQL, DB vacía al cargar."""
 

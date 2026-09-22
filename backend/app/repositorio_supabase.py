@@ -135,6 +135,18 @@ def a_texto(valor: Any, tipo: str) -> Optional[str]:
     return str(valor)
 
 
+PARAMETROS_AJENOS = {"pgbouncer", "connection_limit", "pool_timeout", "statement_cache_size"}
+
+
+def limpiar_dsn(dsn: str) -> str:
+    """Quita parámetros que Supabase agrega para Prisma (?pgbouncer=true…):
+    libpq los rechaza ("invalid URI query parameter") y la app no arranca."""
+    # Sin urlsplit: una contraseña con caracteres raros no debe tumbar el arranque.
+    base, _, query = dsn.strip().strip('"').strip("'").partition("?")
+    pares = [p for p in query.split("&") if p and p.split("=", 1)[0] not in PARAMETROS_AJENOS]
+    return base + ("?" + "&".join(pares) if pares else "")
+
+
 def de_db(valor: Any) -> Any:
     """Valor leído de Postgres → valor que el modelo Pydantic entiende."""
     if isinstance(valor, UUID):
@@ -153,7 +165,7 @@ def de_db(valor: Any) -> Any:
 
 class RepositorioSupabase(Repositorio):
     def __init__(self, dsn: str, conectar: Optional[Callable[[], Any]] = None):
-        self.dsn = dsn
+        self.dsn = limpiar_dsn(dsn)
         self._conectar_fn = conectar
         self._persistido: dict[str, dict[tuple, dict]] = {}
         self._colecciones_vacias()
