@@ -20,6 +20,7 @@ export const ORIGENES: Record<string, string> = {
   linkedin: "LinkedIn",
   campo: "Campo",
   llamada_alex: "Llamada Alex",
+  denue: "Base DENUE",
   otro: "Otro",
 };
 

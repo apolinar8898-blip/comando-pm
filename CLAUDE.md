@@ -339,8 +339,31 @@ Lecciones del despliegue:
 **Recordatorio obligatorio antes de la Fase 2:** Apo debe registrar 5 días
 seguidos de Ivy Lee (cerrar el día con nota) antes de empezar el dashboard REMAX.
 
+### Prospección — base de PyMEs de Querétaro (desde 22/09/2026)
+Módulo aparte del orden de fases (lo pidió Apo con `prompt_base_pymes_qro.md`),
+se entrega por fases y se detiene al final de cada una. Guía: `backend/app/prospeccion/README.md`.
+- **La base es el universo y el CRM es el pipeline.** Las tablas `pq_*` (migración 005)
+  solo priorizan. Contactar = "Pasar al CRM", que crea un `prospecto` (origen
+  `denue`, o `canacintra` si está afiliado) por el repositorio normal y llena
+  `pq_empresas.prospecto_id`. No hay interacciones ni estados duplicados.
+- Las tablas `pq_*` **no entran al repositorio en memoria** (son unas 13 mil empresas).
+  `app/prospeccion/` abre su propia conexión psycopg. Reglas puras en `dominio/prospeccion.py`.
+- **DENUE por descarga masiva** (`denue_22_csv.zip`, edición 05_2026, cp1252).
+  Filtros: 6–250 personas (6–10 = `micro_plus`), sin sector 93 y **sin "sector
+  público"** (decisión: escuelas y clínicas públicas no compran). Resultado: 15,343
+  establecimientos → 13,090 empresas.
+- Se deduplica por teléfono, dominio propio, o razón social + calle (union-find). El
+  `empresa_id` se conserva entre cargas; lo que desaparece queda `vigente = false`.
+- **CANACINTRA Querétaro no tiene directorio público** (canacintraqro.com, 22/09/2026):
+  en la Fase 2 va el importador de archivo + plantilla. Directorio **PIQ 2024**
+  (PDF público) cargado con `importar_piq` → marca `directorios = {piq_2024}`.
+- `parece_celular` queda null (el número no lo dice; el servidor del IFT no responde).
+- Variables nuevas, opcionales: `INEGI_DENUE_TOKEN`, `TAVILY_API_KEY`, `APOLLO_API_KEY`.
+- **Seguridad:** `.env.example` traía `APP_PASSWORD` real y el repo es público; se quitó
+  el 22/09/2026. Hay que rotar la contraseña en Railway.
+
 ### Fase 2 — Dashboard REMAX: decisiones tomadas (22/09/2026, aún sin programar)
-- Tablas `propiedades` y `operaciones` (migración 005, ver diagnóstico). Estatus
+- Tablas `propiedades` y `operaciones` (migración **006**; la 005 la tomó Prospección). Estatus
   "cerrada" se CALCULA (propiedad con operación ligada); no se captura.
 - `mi_comision` se calcula: comisión total × 25 % (captador o comprador) o × 50 % (ambos).
 - **`fecha_cobro`** en operaciones: "comisión cobrada" cuenta en el periodo del cobro.

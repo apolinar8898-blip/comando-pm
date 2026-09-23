@@ -24,7 +24,7 @@ Etapa = Literal[
     "identificado", "contactado", "reunion_agendada", "demo_hecha",
     "propuesta_enviada", "negociacion", "ganado", "perdido",
 ]
-Origen = Literal["canacintra", "referido", "linkedin", "campo", "llamada_alex", "otro"]
+Origen = Literal["canacintra", "referido", "linkedin", "campo", "llamada_alex", "denue", "otro"]
 Segmento = Literal["pyme", "independiente"]
 Servicio = Literal["agente_whatsapp", "agente_voz", "consultoria", "capacitacion"]
 Canal = Literal["llamada", "whatsapp", "visita", "correo", "reunion", "alex"]
