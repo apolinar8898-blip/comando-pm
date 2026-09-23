@@ -350,3 +350,21 @@ seguidos de Ivy Lee (cerrar el día con nota) antes de empezar el dashboard REMA
 - Semilla: terreno 200 m² en Bolaños, $680,000 MXN, venta, propietario Fernando
   Galván, captado sin exclusiva; **prospección y captación: 05/09/2026**.
 - Condición de Apo: programar tras 5 días seguidos de Ivy Lee cerrados (día 1 = 22/09).
+
+### Fase 3 — Integraciones: decisiones tomadas (22/09/2026, aún sin programar)
+- **Orden por valor**: 3a Strava + peso (la carrera es el 08/11; solo sirve antes),
+  3b Google Calendar, 3c Drive solo como enlace (`link_drive` también en proyectos;
+  la lista de archivos recientes se descarta por no ayudar a cerrar clientes).
+- **Peso**: primer registro 90 kg el 22/09/2026; objetivo 86 kg el 08/11/2026
+  (≈ 0.6 kg/semana). Promedio móvil de 7 días contra la línea de 86 kg.
+- **Natación**: la alberca no usa GPS y puede no sincronizarse sola desde el
+  Galaxy Watch; Apo la sube a mano a Strava. Las actividades manuales traen
+  distancia y tiempo pero **no FC**: el ritmo de nado (min/100 m) sale bien y la
+  FC promedio debe ignorar actividades sin pulso (no contarlas como 0).
+- **Reunión agendada** (Calendar): al mover un prospecto se pide fecha, hora y
+  modalidad **presencial (con lugar) o Google Meet** (enlace generado por Calendar);
+  duración por defecto 1 h.
+- Credenciales: `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET` (app "Comando PM" en
+  strava.com/settings/api, ícono en integraciones/), `STRAVA_VERIFY_TOKEN` (lo genera
+  Claude), `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (consentimiento en producción
+  para que el permiso no caduque a los 7 días).
