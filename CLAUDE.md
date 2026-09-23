@@ -338,3 +338,15 @@ Lecciones del despliegue:
 
 **Recordatorio obligatorio antes de la Fase 2:** Apo debe registrar 5 días
 seguidos de Ivy Lee (cerrar el día con nota) antes de empezar el dashboard REMAX.
+
+### Fase 2 — Dashboard REMAX: decisiones tomadas (22/09/2026, aún sin programar)
+- Tablas `propiedades` y `operaciones` (migración 005, ver diagnóstico). Estatus
+  "cerrada" se CALCULA (propiedad con operación ligada); no se captura.
+- `mi_comision` se calcula: comisión total × 25 % (captador o comprador) o × 50 % (ambos).
+- **`fecha_cobro`** en operaciones: "comisión cobrada" cuenta en el periodo del cobro.
+- **Rentas**: precio = renta mensual; la comisión total se precarga como **1 mes de
+  renta** (= precio de cierre), editable.
+- Hitos mensuales y los 3 objetivos SMART de REMAX se actualizan solos con los datos.
+- Semilla: terreno 200 m² en Bolaños, $680,000 MXN, venta, propietario Fernando
+  Galván, captado sin exclusiva; **prospección y captación: 05/09/2026**.
+- Condición de Apo: programar tras 5 días seguidos de Ivy Lee cerrados (día 1 = 22/09).
