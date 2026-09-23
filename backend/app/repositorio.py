@@ -23,10 +23,12 @@ from typing import Optional
 
 from .modelos import (
     Documento,
+    Interaccion,
     KpiSnapshot,
     Objetivo,
     PlanDia,
     Proyecto,
+    Prospecto,
     Reto,
     Rutina,
     Tarea,
@@ -52,6 +54,9 @@ class Repositorio:
         self.planes_dia: dict[str, PlanDia] = {}  # clave: fecha ISO
         self.snapshots: list[KpiSnapshot] = []
         self.rutinas: dict[str, Rutina] = {}
+        self.prospectos: dict[str, Prospecto] = {}
+        self.interacciones: dict[str, Interaccion] = {}
+        self.configuracion: dict[str, object] = {}  # clave → valor JSON
 
     # ---------- Persistencia ----------
 
@@ -70,6 +75,11 @@ class Repositorio:
         self.planes_dia = {p.fecha.isoformat(): p for p in planes}
         self.snapshots = [KpiSnapshot.model_validate(d) for d in crudo.get("snapshots", [])]
         self.rutinas = {d["id"]: Rutina.model_validate(d) for d in crudo.get("rutinas", [])}
+        self.prospectos = {d["id"]: Prospecto.model_validate(d) for d in crudo.get("prospectos", [])}
+        self.interacciones = {
+            d["id"]: Interaccion.model_validate(d) for d in crudo.get("interacciones", [])
+        }
+        self.configuracion = {d["clave"]: d["valor"] for d in crudo.get("configuracion", [])}
 
     def _cargar(self) -> None:
         if not self.ruta.exists():
@@ -107,6 +117,9 @@ class Repositorio:
             "planes_dia": [p.model_dump(mode="json") for p in self.planes_dia.values()],
             "snapshots": [s.model_dump(mode="json") for s in self.snapshots],
             "rutinas": [r.model_dump(mode="json") for r in self.rutinas.values()],
+            "prospectos": [p.model_dump(mode="json") for p in self.prospectos.values()],
+            "interacciones": [i.model_dump(mode="json") for i in self.interacciones.values()],
+            "configuracion": [{"clave": k, "valor": v} for k, v in self.configuracion.items()],
         }
 
     def _respaldo_diario(self) -> None:
@@ -164,6 +177,29 @@ class Repositorio:
 
     def vacio(self) -> bool:
         return not self.proyectos
+
+    def interacciones_de(self, prospecto_id: str) -> list[Interaccion]:
+        propias = [i for i in self.interacciones.values() if i.prospecto_id == prospecto_id]
+        return sorted(propias, key=lambda i: i.fecha, reverse=True)
+
+    def accion_pendiente(self, prospecto_id: str) -> Optional[Tarea]:
+        """La tarea abierta de la próxima acción de un prospecto (a lo más una)."""
+        return next(
+            (t for t in self.tareas.values()
+             if t.prospecto_id == prospecto_id and t.estado in ("pendiente", "en_curso")),
+            None,
+        )
+
+    def proyecto_captacion(self) -> Optional[Proyecto]:
+        """El proyecto de SINPROTEK: por configuración o, si no, por nombre."""
+        pid = self.configuracion.get("proyecto_captacion_id")
+        if pid in self.proyectos:
+            return self.proyectos[pid]
+        return next(
+            (p for p in self.proyectos.values()
+             if p.nombre.lower().startswith("sinprotek") and p.estado == "activo"),
+            None,
+        )
 
     def proyecto_por_nombre(self, nombre: str) -> Optional[Proyecto]:
         clave = nombre.strip().lower()

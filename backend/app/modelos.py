@@ -10,12 +10,24 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from .reloj import ahora_local
+
 EstadoProyecto = Literal["activo", "pausado", "cerrado", "cancelado"]
 EstadoTarea = Literal["pendiente", "en_curso", "hecha", "bloqueada"]
 TipoReto = Literal["riesgo", "bloqueo", "decision_pendiente"]
 EstadoReto = Literal["abierto", "mitigado", "materializado", "cerrado"]
 TipoDocumento = Literal["charter", "canvas", "porter", "roadmap", "rca"]
 Salud = Literal["verde", "amarillo", "rojo"]
+
+# Captación SINPROTEK (Fase 1)
+Etapa = Literal[
+    "identificado", "contactado", "reunion_agendada", "demo_hecha",
+    "propuesta_enviada", "negociacion", "ganado", "perdido",
+]
+Origen = Literal["canacintra", "referido", "linkedin", "campo", "llamada_alex", "otro"]
+Segmento = Literal["pyme", "independiente"]
+Servicio = Literal["agente_whatsapp", "agente_voz", "consultoria", "capacitacion"]
+Canal = Literal["llamada", "whatsapp", "visita", "correo", "reunion", "alex"]
 
 
 def _nuevo_id() -> str:
@@ -35,7 +47,7 @@ class Proyecto(BaseModel):
     fase_inicio: Optional[date] = None
     fase_fin: Optional[date] = None
     lecciones: str = ""
-    creado_en: datetime = Field(default_factory=datetime.now)
+    creado_en: datetime = Field(default_factory=ahora_local)
 
 
 class Objetivo(BaseModel):
@@ -76,6 +88,7 @@ class Tarea(BaseModel):
     esfuerzo_real_h: Optional[float] = None
     origen_rca: Optional[str] = None
     rutina_id: Optional[str] = None  # instancia diaria generada por una rutina
+    prospecto_id: Optional[str] = None  # próxima acción de un prospecto (Ivy Lee la pone primero)
 
     @model_validator(mode="after")
     def _fechas_coherentes(self):
@@ -105,7 +118,7 @@ class Documento(BaseModel):
     version: int = 1
     contenido: dict = Field(default_factory=dict)
     historial: list[dict] = Field(default_factory=list)  # [{version, contenido, fecha}]
-    creado_en: datetime = Field(default_factory=datetime.now)
+    creado_en: datetime = Field(default_factory=ahora_local)
 
 
 class Rutina(BaseModel):
@@ -146,6 +159,55 @@ class Rutina(BaseModel):
         if self.hasta is not None and self.hasta < self.desde:
             raise ValueError("la rutina no puede terminar antes de empezar")
         return self
+
+
+class Prospecto(BaseModel):
+    """Prospecto de SINPROTEK. La etapa se cambia con dominio.captacion.cambiar_etapa
+    (registra fechas_etapa y exige motivo para "perdido")."""
+
+    id: str = Field(default_factory=_nuevo_id)
+    empresa: str
+    contacto: str = ""
+    puesto: str = ""
+    telefono: str = ""
+    correo: str = ""
+    giro: str = ""
+    origen: Origen = "otro"
+    segmento: Segmento = "pyme"
+    servicio: Servicio = "agente_whatsapp"
+    etapa: Etapa = "identificado"
+    fechas_etapa: dict[str, str] = Field(default_factory=dict)  # {etapa: fecha ISO de entrada}
+    fecha_proxima_accion: Optional[date] = None
+    proxima_accion: str = ""
+    monto_desarrollo: float = Field(default=0, ge=0)
+    monto_mensual: float = Field(default=0, ge=0)
+    motivo_perdida: str = ""
+    link_drive: str = ""
+    notas: str = ""
+    creado: datetime = Field(default_factory=ahora_local)
+    actualizado: datetime = Field(default_factory=ahora_local)
+
+    @field_validator("empresa")
+    @classmethod
+    def _empresa(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("el prospecto necesita empresa (o nombre)")
+        return v.strip()
+
+    @model_validator(mode="after")
+    def _motivo(self):
+        if self.etapa == "perdido" and not self.motivo_perdida.strip():
+            raise ValueError("un prospecto perdido exige motivo de pérdida")
+        return self
+
+
+class Interaccion(BaseModel):
+    id: str = Field(default_factory=_nuevo_id)
+    prospecto_id: str
+    fecha: datetime = Field(default_factory=ahora_local)
+    canal: Canal
+    resultado: str = ""
+    nota: str = ""
 
 
 class PlanDia(BaseModel):

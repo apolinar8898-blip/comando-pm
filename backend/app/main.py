@@ -19,8 +19,12 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import datos_demo
+from .captacion_api import ServicioCaptacion, montar_captacion
+from .dominio.captacion import peor
 from .dominio import (
+    acciones_prospeccion,
     avance,
+    componer_plan,
     cuadrante_eisenhower,
     fechas_a_generar,
     instancia,
@@ -87,12 +91,16 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
 
     # ----- Helpers -----
 
+    captacion = ServicioCaptacion(repo)
+
     def _kpis(proyecto: Proyecto, hoy: date) -> dict[str, Any]:
         tareas = repo.tareas_de(proyecto.id)
         retos = repo.retos_de(proyecto.id)
         hito = proximo_hito(tareas, hoy)
+        salud = salud_proyecto(tareas, retos, hoy)
+        salud_extra = captacion.salud(proyecto, hoy)  # SINPROTEK: KPIs de captación
         return {
-            "salud": salud_proyecto(tareas, retos, hoy),
+            "salud": peor(salud, salud_extra) if salud_extra else salud,
             "avance_pct": round(avance(tareas) * 100, 1),
             "spi": round(spi(tareas, hoy), 2),
             "tareas_vencidas": len(tareas_vencidas(tareas, hoy)),
@@ -124,6 +132,8 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
     def _al_dia(hoy: date) -> None:
         """Rutinas primero (sus tareas cuentan en los KPIs), luego la foto del día."""
         _materializar_rutinas(hoy)
+        if captacion.sincronizar_objetivo():
+            repo.guardar()
         _asegurar_snapshots(hoy)
 
     def _asegurar_snapshots(hoy: date) -> None:
@@ -262,6 +272,12 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
     def editar_tarea(tid: str, cambios: dict):
         tarea = _obtener(repo.tareas, tid, "Tarea")
         repo.tareas[tid] = _aplicar_cambios(tarea, cambios)
+        prospecto = repo.prospectos.get(tarea.prospecto_id or "")
+        if prospecto and repo.tareas[tid].estado == "hecha":
+            # La acción ya se hizo: el prospecto queda sin próxima acción
+            # (lo ideal es "Registrar" la interacción, que agenda la siguiente).
+            repo.prospectos[prospecto.id] = prospecto.model_copy(
+                update={"proxima_accion": "", "fecha_proxima_accion": None})
         repo.guardar()
         return _tarea_expandida(repo.tareas[tid], hoy_local())
 
@@ -305,8 +321,12 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
                 if tid in repo.tareas and repo.tareas[tid].estado != "hecha"
                 and not rutina_expirada(repo.tareas[tid], hoy)
             ]
-            sugeridas = sugerir_plan_dia(repo.tareas_de_activos(), hoy)
-            ids = (arrastradas + [t for t in sugeridas if t not in arrastradas])[:6]
+            # Regla de Apo (Fase 1): acciones de prospección vencidas o de hoy primero.
+            activas = repo.tareas_de_activos()
+            ids = componer_plan(
+                acciones_prospeccion(activas, hoy), arrastradas,
+                sugerir_plan_dia(activas, hoy), captacion.tope_ivy(),
+            )
             plan = PlanDia(fecha=hoy, tarea_ids=ids)
             repo.poner_plan(plan)
             repo.guardar()
@@ -317,7 +337,8 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
         ]
         candidatas = [
             _tarea_expandida(t, hoy)
-            for t in sorted(repo.tareas_de_activos(), key=lambda t: t.fecha_fin)
+            for t in sorted(repo.tareas_de_activos(),
+                            key=lambda t: (t.prospecto_id is None, t.fecha_fin))
             if t.estado in ("pendiente", "en_curso") and t.id not in plan.tarea_ids
             and not rutina_expirada(t, hoy)
         ]
@@ -559,6 +580,7 @@ def crear_app(repo: Optional[Repositorio] = None) -> FastAPI:
         datos_demo.sembrar(repo)
         return {"ok": True, "proyectos": len(repo.proyectos)}
 
+    montar_captacion(app, api, repo, captacion, _validar, _candado)
     app.include_router(api)
 
     @app.get("/api/ping", include_in_schema=False)

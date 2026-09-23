@@ -239,8 +239,8 @@ Unidades SI, formato 24 h, MXN, interfaz en español.
 ### Fases del centro de mando (una a la vez; cada una cierra con tests en verde,
 prueba local, despliegue y actualización de este documento)
 - **Fase 0 — Limpieza y despliegue** ✅ código listo (ver abajo).
-- **Fase 1 — Captación SINPROTEK** (CRM de prospectos, kanban, KPIs en
-  `dominio/captacion.py`, endpoint para Alex/VAPI). Al cerrarla: recordar a Apo
+- **Fase 1 — Captación SINPROTEK** ✅ (CRM de prospectos, kanban, KPIs en
+  `dominio/captacion.py`, endpoint para Alex/VAPI; ver "Decisiones de la Fase 1"). Al cerrarla: recordar a Apo
   registrar **5 días seguidos de Ivy Lee antes de empezar la Fase 2**.
 - **Fase 2 — Dashboard REMAX** (propiedades, operaciones, embudo SVG).
 - **Fase 3 — Integraciones** (Google Calendar, Strava, Drive). Notion NO.
@@ -294,3 +294,47 @@ Lecciones del despliegue:
   Varios intentos fallidos activan `ECIRCUITBREAKER` en Supabase (bloqueo temporal);
   por eso la app espera `ESPERA_REINTENTO_DB` (60 s) antes de caer si no conecta.
 - Cambios de variables en Railway quedan "en espera" hasta dar Deploy.
+
+### Decisiones de la Fase 1 — Captación SINPROTEK (22/09/2026)
+- Tablas `prospectos`, `interacciones`, `configuracion` (migración 004). Valores
+  con `check` sobre texto, no enums: agregar un origen es una línea de SQL.
+- **`fechas_etapa`** (jsonb) guarda la primera entrada a cada etapa: la conversión
+  etapa a etapa usa la etapa MÁS ALTA alcanzada (un perdido tras la demo sí cuenta
+  como que llegó a demo). "Perdido" exige motivo (modelo + check en DB).
+- Montos precargados por segmento (PyME 4,000 + 4,000/mes; independiente 3,000 +
+  3,500/mes), editables. MRR ponderado = mensualidad × probabilidad de la etapa
+  (5/10/20/35/50/70 %, en `configuracion.probabilidad_etapa`).
+- **Alertas 🔴**: próxima acción vencida, o > 7 días sin interacción (sin
+  interacciones cuenta desde el alta). Cerrados no alertan.
+- **Ritmo semanal prorrateado** como el SPI: interacciones lun–hoy vs meta × días
+  hábiles COMPLETADOS / 5. El lunes no se evalúa (no amanece en rojo).
+  Meta configurable (`meta_interacciones_semana`, 25 = 5 × día hábil).
+- **Salud de SINPROTEK** = peor(regla normal, regla de captación): 🔴 si > 3
+  prospectos sin contacto > 7 días o ritmo < 50 %. El proyecto de captación se
+  identifica por `configuracion.proyecto_captacion_id` o nombre "SINPROTEK…".
+- **Objetivo SMART "clientes pagando" se calcula** (= prospectos ganados); no se
+  captura a mano (`ServicioCaptacion.sincronizar_objetivo`).
+- **Próxima acción → tarea real** (`tareas.prospecto_id`, a lo más una abierta por
+  prospecto; es una proyección: si el prospecto se cierra o queda sin fecha, se
+  quita). **Ivy Lee**: acciones de prospección vencidas o de hoy van ANTES que todo
+  (`componer_plan`), incluso sobre los pendientes de ayer; tope configurable
+  `tope_prospeccion_ivy` (Apo eligió 6: pueden llenar el día).
+- Registrar interacción (2 toques: abrir + resultado; canal y "seguimiento en 3
+  días" preseleccionados) cierra la acción abierta, agenda la siguiente y mueve
+  "identificado" → "contactado". En Hoy, el checkbox de una acción de prospección
+  abre "Registrar" en vez de solo tacharla.
+- **Alex (VAPI)**: `POST /api/captacion/alex`, router aparte con token propio
+  `ALEX_TOKEN` (header `Authorization: Bearer …`), NO usa APP_PASSWORD. Acepta el
+  formato `tool-calls` de VAPI (`message.toolCallList[].function.arguments`) o JSON
+  plano; responde `{"results": [{"toolCallId", "result"}]}`. Empata prospecto por
+  los últimos 10 dígitos del teléfono (o el número del que llama); si no existe
+  lo crea (origen llamada_alex). `agendo_cita` → etapa "reunión agendada" y
+  próxima acción en `fecha_cita`; si no, seguimiento en 2 días.
+- **Hora local también para datetimes** (`reloj.ahora_local`): en Railway
+  `datetime.now()` es UTC y descuadraba "esta semana" y "7 días sin contacto".
+- `scripts/aplicar_migraciones.py` aplica las migraciones pendientes (lee la tabla
+  `migraciones`); ya no hay que pegar SQL a mano.
+- Variables nuevas: `ALEX_TOKEN`.
+
+**Recordatorio obligatorio antes de la Fase 2:** Apo debe registrar 5 días
+seguidos de Ivy Lee (cerrar el día con nota) antes de empezar el dashboard REMAX.

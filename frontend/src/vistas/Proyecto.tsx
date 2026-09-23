@@ -138,7 +138,7 @@ export default function Proyecto() {
       )}
 
       {pestana === "rutinas" && <Rutinas proyectoId={proyecto.id} rutinas={rutinas} onCambio={cargar} />}
-      {pestana === "gantt" && <Gantt tareas={tareas.filter((t) => !t.rutina_id)} rutaCritica={ruta_critica} onMover={moverTarea} />}
+      {pestana === "gantt" && <Gantt tareas={tareas.filter((t) => !t.rutina_id && !t.prospecto_id)} rutaCritica={ruta_critica} onMover={moverTarea} />}
 
       {pestana === "semana" && <Semana proyectoId={proyecto.id} />}
 

@@ -4,6 +4,7 @@ import { api } from "../api";
 import type { Hoy as DatosHoy, Proyecto } from "../tipos";
 import Semaforo from "../componentes/Semaforo";
 import { ChipProyecto, EtiquetaCuadrante, fechaCorta } from "../componentes/Chips";
+import RegistrarInteraccion from "../componentes/RegistrarInteraccion";
 
 // La pantalla más importante de la app (CLAUDE.md §4.1):
 // plan Ivy Lee del día, semáforo del portafolio y retos que arden.
@@ -15,6 +16,8 @@ export default function Hoy() {
   const [cerrando, setCerrando] = useState(false);
   const [nota, setNota] = useState("");
   const [error, setError] = useState("");
+  // Acción de prospección: "hecha" = interacción registrada (agenda la siguiente)
+  const [registrar, setRegistrar] = useState<{ id: string; empresa: string } | null>(null);
 
   const cargar = useCallback(async () => {
     const [datosHoy, portafolio] = await Promise.all([
@@ -35,6 +38,11 @@ export default function Hoy() {
   const hechas = hoy.tareas.filter((t) => t.estado === "hecha").length;
 
   async function alternar(id: string, estado: string) {
+    const tarea = hoy?.tareas.find((t) => t.id === id);
+    if (tarea?.prospecto_id && estado !== "hecha") {
+      setRegistrar({ id: tarea.prospecto_id, empresa: tarea.titulo.split(" — ").pop() ?? tarea.titulo });
+      return;
+    }
     await api.patch(`/api/tareas/${id}`, { estado: estado === "hecha" ? "pendiente" : "hecha" });
     await cargar();
   }
@@ -120,6 +128,7 @@ export default function Hoy() {
                     <span className={`block text-base leading-snug font-medium ${hecha ? "text-[var(--tinta-suave)] line-through" : ""}`}>
                       {t.es_hito && "◆ "}
                       {t.rutina_id && <span title="Rutina">↻ </span>}
+                      {t.prospecto_id && <span title="Prospección SINPROTEK">🎯 </span>}
                       {t.titulo}
                     </span>
                     <span className="mt-1 flex flex-wrap items-center gap-1.5">
@@ -281,6 +290,17 @@ export default function Hoy() {
           </section>
         )}
       </aside>
+      {registrar && (
+        <RegistrarInteraccion
+          prospectoId={registrar.id}
+          empresa={registrar.empresa}
+          onCerrar={() => setRegistrar(null)}
+          onListo={() => {
+            setRegistrar(null);
+            cargar().catch(() => {});
+          }}
+        />
+      )}
     </div>
   );
 }

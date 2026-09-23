@@ -45,6 +45,7 @@ export interface Tarea {
   origen_rca?: string | null;
   rutina_id?: string | null;
   expirada?: boolean; // instancia de rutina de un día pasado sin hacer
+  prospecto_id?: string | null; // próxima acción de un prospecto de SINPROTEK
   cuadrante: 1 | 2 | 3 | 4;
   proyecto_nombre: string;
   proyecto_color: string;
@@ -123,4 +124,69 @@ export interface DetalleProyecto {
   objetivos: Objetivo[];
   snapshots: Snapshot[];
   rutinas: Rutina[];
+}
+
+// ---------- Captación SINPROTEK (Fase 1) ----------
+
+export type Etapa =
+  | "identificado" | "contactado" | "reunion_agendada" | "demo_hecha"
+  | "propuesta_enviada" | "negociacion" | "ganado" | "perdido";
+export type Canal = "llamada" | "whatsapp" | "visita" | "correo" | "reunion" | "alex";
+
+export interface Prospecto {
+  id: string;
+  empresa: string;
+  contacto: string;
+  puesto: string;
+  telefono: string;
+  correo: string;
+  giro: string;
+  origen: string;
+  segmento: "pyme" | "independiente";
+  servicio: string;
+  etapa: Etapa;
+  fechas_etapa: Record<string, string>;
+  fecha_proxima_accion: string | null;
+  proxima_accion: string;
+  monto_desarrollo: number;
+  monto_mensual: number;
+  motivo_perdida: string;
+  link_drive: string;
+  notas: string;
+  alertas: ("accion_vencida" | "sin_contacto")[];
+  ultimo_contacto: string;
+  dias_sin_contacto: number;
+  num_interacciones: number;
+}
+
+export interface Interaccion {
+  id: string;
+  prospecto_id: string;
+  fecha: string;
+  canal: Canal;
+  resultado: string;
+  nota: string;
+}
+
+export interface KpisCaptacion {
+  ganados: number;
+  meta_clientes: number;
+  dias_restantes: number;
+  mrr_actual: number;
+  mrr_ponderado: number;
+  por_etapa: Record<Etapa, number>;
+  conversion: { de: Etapa; a: Etapa; llegaron: number; pasaron: number; pct: number | null }[];
+  interacciones_semana: number;
+  meta_semana: number;
+  ritmo: number | null;
+  con_alerta: number;
+  sin_contacto: number;
+  acciones_vencidas: number;
+}
+
+export interface TableroCaptacion {
+  kpis: KpisCaptacion;
+  prospectos: Prospecto[];
+  embudo: Etapa[];
+  config: { meta_interacciones_semana: number; probabilidad_etapa: Record<string, number>; tope_prospeccion_ivy: number };
 }

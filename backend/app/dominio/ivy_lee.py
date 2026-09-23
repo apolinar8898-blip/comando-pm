@@ -50,6 +50,35 @@ def sugerir_plan_dia(tareas: list[Tarea], hoy: date) -> list[str]:
     return plan
 
 
+def acciones_prospeccion(tareas: list[Tarea], hoy: date) -> list[str]:
+    """Próximas acciones de prospectos vencidas o de hoy, las más viejas primero.
+
+    Regla de Apo (Fase 1): van ANTES que cualquier otra tarea del plan.
+    """
+    propias = [
+        t for t in tareas
+        if t.prospecto_id and t.estado in ("pendiente", "en_curso") and t.fecha_fin <= hoy
+    ]
+    return [t.id for t in sorted(propias, key=lambda t: t.fecha_fin)]
+
+
+def componer_plan(
+    prospeccion: list[str], arrastradas: list[str], sugeridas: list[str],
+    tope_prospeccion: int = MAX_TAREAS_DIA,
+) -> list[str]:
+    """Plan del día: prospección (hasta el tope) → pendientes de ayer → sugerencia.
+
+    Sin duplicados y máximo 6. Con tope 6 la prospección puede llenar el día:
+    es la regla elegida por Apo (meta de 3 clientes), configurable.
+    """
+    plan: list[str] = []
+    for grupo in (prospeccion[:tope_prospeccion], arrastradas, sugeridas):
+        for tid in grupo:
+            if tid not in plan and len(plan) < MAX_TAREAS_DIA:
+                plan.append(tid)
+    return plan
+
+
 def validar_plan(tarea_ids: list[str]) -> list[str]:
     """Aplica el límite duro: sin duplicados y máximo 6."""
     unicos: list[str] = []

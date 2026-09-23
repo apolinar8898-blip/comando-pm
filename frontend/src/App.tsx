@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { NavLink, Route, Routes } from "react-router-dom";
 import { CLAVE_TOKEN } from "./api";
+import Captacion from "./vistas/Captacion";
 import Eisenhower from "./vistas/Eisenhower";
 import Hoy from "./vistas/Hoy";
 import Portafolio from "./vistas/Portafolio";
@@ -36,6 +37,9 @@ export default function App() {
             <NavLink to="/" end className={enlace}>
               Hoy
             </NavLink>
+            <NavLink to="/captacion" className={enlace}>
+              Captación
+            </NavLink>
             <NavLink to="/semana" className={enlace}>
               Semana
             </NavLink>
@@ -51,6 +55,7 @@ export default function App() {
       <main className="mx-auto max-w-6xl px-4 py-4 sm:py-6">
         <Routes>
           <Route path="/" element={<Hoy />} />
+          <Route path="/captacion" element={<Captacion />} />
           <Route path="/semana" element={<Semana />} />
           <Route path="/eisenhower" element={<Eisenhower />} />
           <Route path="/portafolio" element={<Portafolio />} />

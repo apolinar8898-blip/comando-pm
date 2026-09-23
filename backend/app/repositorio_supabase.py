@@ -18,7 +18,9 @@ from decimal import Decimal
 from typing import Any, Callable, Optional
 from uuid import UUID
 
-from .modelos import Documento, KpiSnapshot, Objetivo, PlanDia, Proyecto, Reto, Rutina, Tarea
+from .modelos import (
+    Documento, Interaccion, KpiSnapshot, Objetivo, PlanDia, Proyecto, Prospecto, Reto, Rutina, Tarea,
+)
 from .reloj import ZONA_DEFECTO, zona
 from .repositorio import Repositorio
 
@@ -45,6 +47,29 @@ TABLAS: list[dict[str, Any]] = [
         },
     },
     {
+        "coleccion": "prospectos", "tabla": "prospectos", "modelo": Prospecto, "pk": ["id"],
+        "columnas": {
+            "id": "uuid", "empresa": "text", "contacto": "text", "puesto": "text",
+            "telefono": "text", "correo": "text", "giro": "text", "origen": "text",
+            "segmento": "text", "servicio": "text", "etapa": "text", "fechas_etapa": "jsonb",
+            "fecha_proxima_accion": "date", "proxima_accion": "text",
+            "monto_desarrollo": "numeric", "monto_mensual": "numeric",
+            "motivo_perdida": "text", "link_drive": "text", "notas": "text",
+            "creado": "timestamptz", "actualizado": "timestamptz",
+        },
+    },
+    {
+        "coleccion": "interacciones", "tabla": "interacciones", "modelo": Interaccion, "pk": ["id"],
+        "columnas": {
+            "id": "uuid", "prospecto_id": "uuid", "fecha": "timestamptz", "canal": "text",
+            "resultado": "text", "nota": "text",
+        },
+    },
+    {
+        "coleccion": "configuracion", "tabla": "configuracion", "modelo": None, "pk": ["clave"],
+        "columnas": {"clave": "text", "valor": "jsonb"},
+    },
+    {
         "coleccion": "objetivos", "tabla": "objetivos", "modelo": Objetivo, "pk": ["id"],
         "columnas": {
             "id": "uuid", "proyecto_id": "uuid", "especifico": "text", "metrica": "text",
@@ -60,6 +85,7 @@ TABLAS: list[dict[str, Any]] = [
             "es_hito": "boolean", "importante": "boolean", "urgente_manual": "boolean",
             "dependencias": "uuid[]", "esfuerzo_estimado_h": "numeric",
             "esfuerzo_real_h": "numeric", "origen_rca": "uuid", "rutina_id": "uuid",
+            "prospecto_id": "uuid",
         },
     },
     {

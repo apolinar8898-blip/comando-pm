@@ -25,3 +25,9 @@ def hoy_en(instante_utc: datetime, zona_: ZoneInfo) -> date:
 
 def hoy_local(ahora_utc: Optional[datetime] = None) -> date:
     return hoy_en(ahora_utc or datetime.now(timezone.utc), zona())
+
+
+def ahora_local() -> datetime:
+    """Fecha y hora de Querétaro sin zona (el almacén usa datetimes "ingenuos"
+    en hora local; en Railway datetime.now() daría UTC)."""
+    return datetime.now(timezone.utc).astimezone(zona()).replace(tzinfo=None)
