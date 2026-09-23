@@ -368,3 +368,20 @@ seguidos de Ivy Lee (cerrar el día con nota) antes de empezar el dashboard REMA
   strava.com/settings/api, ícono en integraciones/), `STRAVA_VERIFY_TOKEN` (lo genera
   Claude), `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (consentimiento en producción
   para que el permiso no caduque a los 7 días).
+
+### Fase 4 — Ingresos y SAT: decisiones tomadas (23/09/2026, aún sin programar)
+- Tablas `ingresos` (fecha, fuente uber/remax/sinprotek/otros, monto MXN, concepto)
+  y `obligaciones_sat` (periodo AAAA-MM, fecha_limite, pendiente/presentada,
+  fecha_presentada, nota). Migración 006.
+- **REMAX automático**: las comisiones cobradas de `operaciones` (Fase 2) cuentan
+  como ingreso en su `fecha_cobro`; no se copian a `ingresos` (una sola fuente).
+- **Uber**: captura manual semanal del **depósito neto**.
+- **SINPROTEK**: captura manual hasta que haya ingresos recurrentes (entonces se
+  evalúa sugerir "cobro esperado" por cliente ganado).
+- **SAT**: obligación mensual del mes anterior; vence el **17** (si es inhábil, el
+  siguiente día hábil). Tarjeta en Hoy **desde el día 12**; si vence sin
+  presentarse queda en rojo. **Tarea en Ivy Lee el día 14** (importante + urgente
+  manual) en un proyecto "Finanzas y SAT" que se crea en la Fase 4.
+- Aviso dado a Apo: la DIOT legalmente vence el último día del mes siguiente y las
+  personas físicas pueden tener 1–5 días hábiles extra según el 6.º dígito del RFC;
+  se usa el 17 para todo (más temprano es seguro) hasta que su contador confirme.
