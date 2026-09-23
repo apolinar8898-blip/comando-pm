@@ -1,0 +1,34 @@
+{
+  "type": "object",
+  "properties": {
+    "telefono": {
+      "type": "string",
+      "description": "Teléfono del prospecto a 10 dígitos. Si no lo dicta, déjalo vacío: se usa el número desde el que llama."
+    },
+    "empresa": {
+      "type": "string",
+      "description": "Nombre de la empresa o negocio del prospecto."
+    },
+    "contacto": {
+      "type": "string",
+      "description": "Nombre de la persona con la que hablaste."
+    },
+    "resultado": {
+      "type": "string",
+      "description": "Resultado corto de la llamada: Interesado, No interesado, Agendó reunión, Pidió cotización, Llamar después."
+    },
+    "nota": {
+      "type": "string",
+      "description": "Detalles útiles: giro, necesidad, objeciones, mejor horario."
+    },
+    "agendo_cita": {
+      "type": "boolean",
+      "description": "true si el prospecto agendó una reunión o demo."
+    },
+    "fecha_cita": {
+      "type": "string",
+      "description": "Fecha de la reunión en formato AAAA-MM-DD (solo si agendó)."
+    }
+  },
+  "required": ["resultado"]
+}
